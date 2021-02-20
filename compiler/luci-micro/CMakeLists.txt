@@ -65,7 +65,7 @@ include_directories(PUBLIC ${LIB_PATH}/resources)
 include_directories(PUBLIC ${LIB_PATH}/third_party/flatbuffers/include)
 include_directories(PUBLIC ${LIB_PATH}/third_party)
 include_directories(PUBLIC ${LIB_PATH}/luci/log/include)
-
+include_directories(PUBLIC ${LIB_PATH}/luci-interpreter/include)
 
 
 add_definitions(${GCC_COVERAGE_COMPILE_FLAGS})
