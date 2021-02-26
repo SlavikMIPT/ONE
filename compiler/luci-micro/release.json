@@ -39,7 +39,8 @@
       "-Wl,--wrap,exit",
       "-Wl,--wrap,atexit",
       "-Wl,-n"
-    ],
+    ]
+	},
     "ARMC6": {
         "common": ["-c", "--target=arm-arm-none-eabi", "-mthumb", "-Oz",
                    "-Wno-armcc-pragma-push-pop", "-Wno-armcc-pragma-anon-unions",

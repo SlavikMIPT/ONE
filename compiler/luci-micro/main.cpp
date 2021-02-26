@@ -16,8 +16,8 @@
 int main()
 {
 #ifdef TEST_LUCIINTERPRETER
-  serial_logger.info("STM32F767 SystemCoreClock %d\n", SystemCoreClock);
-  serial_logger.info("Model NET_0000.circle\n");
+  printf("STM32F767 SystemCoreClock %d\n", SystemCoreClock);
+  printf("Model NET_0000.circle\n");
 
   std::vector<char> *buf = new std::vector<char>(
       circle_model_raw, circle_model_raw + sizeof(circle_model_raw) / sizeof(circle_model_raw[0]));
@@ -25,30 +25,30 @@ int main()
   // Verify flatbuffers
   flatbuffers::Verifier verifier{
       static_cast<const uint8_t *>(static_cast<void *>(model_data.data())), model_data.size()};
-  serial_logger.info("circle::VerifyModelBuffer\n");
+  printf("circle::VerifyModelBuffer\n");
   if (!circle::VerifyModelBuffer(verifier))
   {
-    serial_logger.info("ERROR: Failed to verify circle\n");
+    printf("ERROR: Failed to verify circle\n");
   }
-  serial_logger.info("OK\n");
+  printf("OK\n");
   // auto model = circle::GetModel(static_cast<const uint8_t *>(static_cast<void
-  // *>(model_data.data()))); serial_logger.info("%s\n", model->description()->c_str());
-  serial_logger.info("luci::Importer().importModule\n");
+  // *>(model_data.data()))); printf("%s\n", model->description()->c_str());
+  printf("luci::Importer().importModule\n");
 
   auto module = luci::Importer().importModule(circle::GetModel(model_data.data()));
 
   if (module == nullptr)
   {
-    serial_logger.info("ERROR: Failed to load \n");
+    printf("ERROR: Failed to load \n");
   }
-  serial_logger.info("OK\n");
+  printf("OK\n");
 
-  serial_logger.info("luci_interpreter::Interpreter\n");
+  printf("luci_interpreter::Interpreter\n");
 
   auto interpreter = std::make_unique<luci_interpreter::Interpreter>(module.get());
   auto nodes = module->graph()->nodes();
   auto nodes_count = nodes->size();
-  serial_logger.info("nodes_count: %d\n", nodes_count);
+  printf("nodes_count: %d\n", nodes_count);
   // Fill input tensors with some garbage
   while (true)
   {
@@ -79,8 +79,8 @@ int main()
     t.start();
     interpreter->interpret();
     t.stop();
-    serial_logger.info("\rFinished in %dus   ", t.read_us());
-    ThisThread::sleep_for(10);
+    printf("\rFinished in %dus   ", t.read_us());
+    ThisThread::sleep_for(100);
   }
 #endif
   return 0;
