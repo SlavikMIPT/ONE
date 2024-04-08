@@ -65,7 +65,8 @@ void iterate_per_channel(CircleConst *node, int32_t &channel_dim_index, IterFunc
 template <loco::DataType out_type>
 void sym_wquant_per_channel(CircleConst *node, std::vector<float> &min, std::vector<float> &max,
                             std::vector<float> &scaling_factor, std::vector<float> &nudged_min,
-                            std::vector<float> &nudged_max, int32_t &channel_dim_index)
+                            std::vector<float> &nudged_max, int32_t &channel_dim_index,
+                            const luci::QuantizationAlgorithm &alg_type)
 {
   assert(node->dtype() == loco::DataType::FLOAT32);
   assert(out_type == loco::DataType::S4 || out_type == loco::DataType::S8 ||
@@ -91,7 +92,103 @@ void sym_wquant_per_channel(CircleConst *node, std::vector<float> &min, std::vec
     quantized_values[cal_offset(dimension, indices)] =
       static_cast<int32_t>(std::round(data * scaling_factor_inv));
   };
+  if (alg_type == QuantizationAlgorithm::MinimumMSE)
+  {
+    std::vector<float> max_scale(min.size());
+    for (int i = 0; i < min.size(); ++i)
+    {
+      max_scale[i] = std::max(std::fabs(min[i]), std::fabs(max[i]));
+    }
+    std::vector<double> channel_mse(min.size());
+    std::vector<double> channel_min_mse(min.size(), std::numeric_limits<double>::max());
 
+    auto calculate_mse = [&](uint32_t *indices, loco::TensorShape &dimension,
+                             int channel_dim_index) {
+      int channel_idx = indices[channel_dim_index];
+      auto data = node->at<loco::DataType::FLOAT32>(cal_offset(dimension, indices));
+      data = data < nudged_min[channel_idx] ? nudged_min[channel_idx] : data;
+      data = data > nudged_max[channel_idx] ? nudged_max[channel_idx] : data;
+      double diff =
+        data - quantized_values[cal_offset(dimension, indices)] * scaling_factor[channel_idx];
+      channel_mse[channel_idx] += diff * diff;
+    };
+
+    std::vector<float> scaling_factor_base = scaling_factor;
+    std::vector<std::pair<float, float>> golden_start_end(min.size());
+    for (int i = 0; i < max_scale.size(); ++i)
+    {
+      // TODO Think about optimal range selection
+      golden_start_end[i].first = scaling_factor_base[i] * 0.9;
+      golden_start_end[i].second = scaling_factor_base[i] * 1.1;
+    }
+    const auto grid_size = 100;
+    const auto kPhi = 1.618033988749894848204586834365638118;
+
+    for (int i = 0; i < grid_size; ++i)
+    {
+      for (int j = 0; j < scaling_factor.size(); ++j)
+      {
+        scaling_factor[j] = golden_start_end[j].second -
+                            (golden_start_end[j].second - golden_start_end[j].first) / kPhi;
+      }
+      for (auto &val : channel_mse)
+      {
+        val = 0;
+      }
+      iterate_per_channel(node, channel_dim_index, quantize);
+      iterate_per_channel(node, channel_dim_index, calculate_mse);
+      auto channel_mse_x1 = channel_mse;
+
+      for (int j = 0; j < scaling_factor.size(); ++j)
+      {
+        scaling_factor[j] = golden_start_end[j].first +
+                            (golden_start_end[j].second - golden_start_end[j].first) / kPhi;
+      }
+      for (auto &val : channel_mse)
+      {
+        val = 0;
+      }
+      iterate_per_channel(node, channel_dim_index, quantize);
+      iterate_per_channel(node, channel_dim_index, calculate_mse);
+      auto channel_mse_x2 = channel_mse;
+
+      for (int k = 0; k < channel_mse_x1.size(); ++k)
+      {
+        if (channel_mse_x1[k] > channel_mse_x2[k])
+        {
+          golden_start_end[k].first =
+            golden_start_end[k].second -
+            (golden_start_end[k].second - golden_start_end[k].first) / kPhi;
+        }
+        else
+        {
+          golden_start_end[k].second =
+            golden_start_end[k].first +
+            (golden_start_end[k].second - golden_start_end[k].first) / kPhi;
+        }
+      }
+    }
+    for (int i = 0; i < golden_start_end.size(); ++i)
+    {
+      scaling_factor[i] = (golden_start_end[i].first + golden_start_end[i].second) / 2;
+    }
+    iterate_per_channel(node, channel_dim_index, quantize);
+    iterate_per_channel(node, channel_dim_index, calculate_mse);
+    auto channel_mse_opt = channel_mse;
+    scaling_factor = scaling_factor_base;
+    iterate_per_channel(node, channel_dim_index, quantize);
+    iterate_per_channel(node, channel_dim_index, calculate_mse);
+    auto channel_mse_base = channel_mse;
+
+    // Checking if found scale is better than base
+    for (int i = 0; i < channel_mse_base.size(); ++i)
+    {
+      if (channel_mse_opt[i] < channel_mse_base[i])
+        scaling_factor[i] = (golden_start_end[i].first + golden_start_end[i].second) / 2;
+      else
+        channel_mse_opt[i] = channel_mse_base[i];
+    }
+  }
   iterate_per_channel(node, channel_dim_index, quantize);
 
   node->dtype(out_type);      // change the type of tensor
@@ -167,17 +264,17 @@ void QuantizeWeightsOnly::quantize_weights(luci::CircleConst *weights)
       if (output_type == loco::DataType::S4)
       {
         sym_wquant_per_channel<loco::DataType::S4>(weights, min, max, scaling_factor, nudged_min,
-                                                   nudged_max, channel_dim_index);
+                                                   nudged_max, channel_dim_index, algorithm);
       }
       else if (output_type == loco::DataType::S8)
       {
         sym_wquant_per_channel<loco::DataType::S8>(weights, min, max, scaling_factor, nudged_min,
-                                                   nudged_max, channel_dim_index);
+                                                   nudged_max, channel_dim_index, algorithm);
       }
       else if (output_type == loco::DataType::S16)
       {
         sym_wquant_per_channel<loco::DataType::S16>(weights, min, max, scaling_factor, nudged_min,
-                                                    nudged_max, channel_dim_index);
+                                                    nudged_max, channel_dim_index, algorithm);
       }
       else
       {
