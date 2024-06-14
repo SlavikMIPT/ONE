@@ -14,20 +14,21 @@
  * limitations under the License.
  */
 
-#ifndef ONERT_MICRO_TEST_MODELS_SPACE_TO_DEPTH_KERNEL_BASE_H
-#define ONERT_MICRO_TEST_MODELS_SPACE_TO_DEPTH_KERNEL_BASE_H
+#ifndef ONERT_MICRO_TEST_MODELS_BROADCAST_TO_KERNEL_BASE_H
+#define ONERT_MICRO_TEST_MODELS_BROADCAST_TO_KERNEL_BASE_H
 
 #include "test_models/TestDataBase.h"
 #include <cassert>
+
 namespace onert_micro
 {
 namespace test_model
 {
 
-template <typename T> class TestDataSpaceToDepthBase : public TestDataBase<T>
+template <typename T> class TestDataBroadcastToBase : public TestDataBase<T>
 {
 public:
-  TestDataSpaceToDepthBase() = default;
+  TestDataBroadcastToBase() = default;
 
   const unsigned char *get_model_ptr() override final { return _test_kernel_model_circle; }
 
@@ -57,4 +58,4 @@ protected:
 } // namespace test_model
 } // namespace onert_micro
 
-#endif // ONERT_MICRO_TEST_MODELS_SPACE_TO_DEPTH_KERNEL_BASE_H
+#endif // ONERT_MICRO_TEST_MODELS_BROADCAST_TO_KERNEL_BASE_H

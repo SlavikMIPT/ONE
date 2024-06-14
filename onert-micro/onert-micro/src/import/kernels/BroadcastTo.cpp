@@ -25,12 +25,14 @@ using namespace onert_micro::core;
 namespace
 {
 
-constexpr uint32_t inputTensorIdx = 0;
+constexpr uint32_t input1TensorIdx = 0;
+constexpr uint32_t input2TensorIdx = 1;
 constexpr uint32_t outputTensorIdx = 0;
+constexpr auto kMaxDims = 5;
 
 } // namespace
 
-OMStatus onert_micro::import::configure_kernel_CircleSpaceToDepth(
+OMStatus onert_micro::import::configure_kernel_CircleBroadcastTo(
   const onert_micro::import::OMConfigureArgs &config_args)
 {
   OMRuntimeContext &runtime_context = config_args.runtime_context;
@@ -42,39 +44,41 @@ OMStatus onert_micro::import::configure_kernel_CircleSpaceToDepth(
   if (status != Ok)
     return status;
 
-  const circle::Tensor *input = runtime_kernel.inputs[inputTensorIdx];
+  const circle::Tensor *input1 = runtime_kernel.inputs[input1TensorIdx];
+  const circle::Tensor *input2 = runtime_kernel.inputs[input2TensorIdx];
   const circle::Tensor *output = runtime_kernel.outputs[outputTensorIdx];
 
-  assert(input != nullptr);
+  assert(input1 != nullptr);
+  assert(input2 != nullptr);
   assert(output != nullptr);
 
-  status = utils::checkCondition(input->type() == output->type());
+  status = utils::checkCondition(input1->type() == output->type());
   if (status != Ok)
     return status;
 
-  OMRuntimeShape input_shape(input);
-
-  const auto *options = runtime_kernel.first_operator->builtin_options_as_SpaceToDepthOptions();
-  const int32_t block_size = options->block_size();
-
-  status = utils::checkCondition(block_size > 0);
+  status = utils::checkCondition(input2->type() == circle::TensorType_INT32 or
+                                 input2->type() == circle::TensorType_INT64);
   if (status != Ok)
     return status;
 
-  constexpr int kHeightRank = 1;
-  constexpr int kWidthRank = 2;
+  core::OMRuntimeShape input1_shape(input1);
+  core::OMRuntimeShape input2_shape(input2);
+  core::OMRuntimeShape output_shape(output);
 
-  const int input_height = input_shape.dims(kHeightRank);
-  const int input_width = input_shape.dims(kWidthRank);
-  int output_height = input_height / block_size;
-  int output_width = input_width / block_size;
+  // Ensure output dims is not less than input dims.
+  int input_num_dims = input1_shape.dimensionsCount();
+  int output_num_dims = output_shape.dimensionsCount();
+  int shape_num_dims = input2_shape.dims(0);
 
-  status = utils::checkCondition(input_height == output_height * block_size);
+  status = utils::checkCondition(output_num_dims == shape_num_dims);
   if (status != Ok)
     return status;
 
-  status = utils::checkCondition(input_width == output_width * block_size);
+  status = utils::checkCondition(input_num_dims <= output_num_dims);
   if (status != Ok)
     return status;
+
+  status = utils::checkCondition(output_num_dims <= kMaxDims);
+
   return status;
 }

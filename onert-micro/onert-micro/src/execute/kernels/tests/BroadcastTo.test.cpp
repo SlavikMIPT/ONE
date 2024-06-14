@@ -15,8 +15,8 @@
  */
 
 #include "execute/OMTestUtils.h"
-#include "test_models/space_to_depth/FloatSpaceToDepthKernel.h"
-#include "test_models/space_to_depth/NegSpaceToDepthKernel.h"
+#include "test_models/broadcast_to/FloatBroadcastToKernel.h"
+#include "test_models/broadcast_to/NegBroadcastToKernel.h"
 
 namespace onert_micro
 {
@@ -27,22 +27,22 @@ namespace testing
 
 using namespace testing;
 
-class SpaceToDepthTest : public ::testing::Test
+class BroadcastToTest : public ::testing::Test
 {
   // Do nothing
 };
 
-TEST_F(SpaceToDepthTest, Float_P)
+TEST_F(BroadcastToTest, Float_P)
 {
-  onert_micro::test_model::TestDataFloatSpaceToDepth test_data_kernel;
+  onert_micro::test_model::TestDataFloatBroadcastTo test_data_kernel;
   std::vector<float> output_data_vector =
     onert_micro::execute::testing::checkKernel<float>(1, &test_data_kernel);
   EXPECT_THAT(output_data_vector, test_data_kernel.get_output_data_by_index(0));
 }
 
-TEST_F(SpaceToDepthTest, Input_output_type_mismatch_NEG)
+TEST_F(BroadcastToTest, Input_output_type_mismatch_NEG)
 {
-  onert_micro::test_model::NegTestDataInputOutputTypeMismatchSpaceToDepthKernel test_data_kernel;
+  onert_micro::test_model::NegTestDataInputOutputTypeMismatchBroadcastToKernel test_data_kernel;
 
   EXPECT_DEATH(checkNEGSISOKernel(&test_data_kernel), "");
 }

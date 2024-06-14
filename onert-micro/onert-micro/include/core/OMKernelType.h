@@ -34,6 +34,7 @@ enum OMKernelType
 enum OMBuilderCustomID
 {
   CUSTOM_custom_gru,
+  CUSTOM_BroadcastTo
 };
 
 #define REGISTER_KERNEL(builtin_operator, name) BuiltinOperator_##builtin_operator,

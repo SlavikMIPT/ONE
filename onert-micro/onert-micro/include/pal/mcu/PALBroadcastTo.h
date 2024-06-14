@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-#ifndef ONERT_MICRO_EXECUTE_PAL_SPACE_TO_DEPTH_ND_H
-#define ONERT_MICRO_EXECUTE_PAL_SPACE_TO_DEPTH_ND_H
+#ifndef ONERT_MICRO_EXECUTE_PAL_BROADCAST_TO_ND_H
+#define ONERT_MICRO_EXECUTE_PAL_BROADCAST_TO_ND_H
 
-#include "PALSpaceToDepthCommon.h"
+#include "PALBroadcastToCommon.h"
 namespace onert_micro
 {
 namespace execute
@@ -28,4 +28,4 @@ namespace pal
 } // namespace pal
 } // namespace execute
 } // namespace onert_micro
-#endif // ONERT_MICRO_EXECUTE_PAL_SPACE_TO_DEPTH_ND_H
+#endif // ONERT_MICRO_EXECUTE_PAL_BROADCAST_TO_ND_H

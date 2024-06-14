@@ -19,25 +19,28 @@
 #include "execute/OMRuntimeKernel.h"
 
 #include "core/OMRuntimeShape.h"
-#include "PALSpaceToDepth.h"
+#include "PALBroadcastTo.h"
 
 using namespace onert_micro;
 using namespace onert_micro::execute;
 namespace
 {
 
-constexpr uint32_t inputTensorIdx = 0;
+constexpr uint32_t input1TensorIdx = 0;
+constexpr uint32_t input2TensorIdx = 1;
 constexpr uint32_t outputTensorIdx = 0;
+constexpr auto kMaxDims = 5;
 
 } // namespace
-OMStatus onert_micro::execute::execute_kernel_CircleSpaceToDepth(
+
+OMStatus onert_micro::execute::execute_kernel_CircleBroadcastTo(
   const onert_micro::execute::OMExecuteArgs &execute_args)
 {
   core::OMRuntimeContext &runtime_context = execute_args.runtime_context;
   core::OMRuntimeStorage &runtime_storage = execute_args.runtime_storage;
   uint16_t op_index = execute_args.kernel_index;
 
-  const circle::Tensor *input;
+  const circle::Tensor *input1;
   const circle::Tensor *output;
 
   uint8_t *input_data;
@@ -49,31 +52,29 @@ OMStatus onert_micro::execute::execute_kernel_CircleSpaceToDepth(
   if (status != Ok)
     return status;
 
-  input = runtime_kernel.inputs[inputTensorIdx];
+  input1 = runtime_kernel.inputs[input1TensorIdx];
   output = runtime_kernel.outputs[outputTensorIdx];
 
-  core::OMRuntimeShape input_shape(input);
+  core::OMRuntimeShape input_shape(input1);
   core::OMRuntimeShape output_shape(output);
 
-  assert(input != nullptr);
+  assert(input1 != nullptr);
   assert(output != nullptr);
 
   status = runtime_kernel.getDataFromStorage(op_index, runtime_storage, runtime_context);
   if (status != Ok)
     return status;
 
-  input_data = runtime_kernel.inputs_data[inputTensorIdx];
+  input_data = runtime_kernel.inputs_data[input1TensorIdx];
   output_data = runtime_kernel.outputs_data[outputTensorIdx];
-  const auto *options = runtime_kernel.first_operator->builtin_options_as_SpaceToDepthOptions();
-  const int32_t block_size = options->block_size();
-  switch (input->type())
+  switch (input1->type())
   {
 #ifndef DIS_FLOAT
     case circle::TensorType_FLOAT32:
     {
       status =
-        pal::SpaceToDepth<float>(block_size, input_shape, reinterpret_cast<float *>(input_data),
-                                 output_shape, reinterpret_cast<float *>(output_data));
+        pal::BroadcastTo<kMaxDims, float>(input_shape, reinterpret_cast<const float *>(input_data),
+                                          output_shape, reinterpret_cast<float *>(output_data));
     }
     break;
 #endif // DIS_FLOAT
