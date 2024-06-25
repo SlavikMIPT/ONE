@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Samsung Electronics Co., Ltd. All Rights Reserved
+ * Copyright (c) 2024 Samsung Electronics Co., Ltd. All Rights Reserved
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-#ifndef LUCI_INTERPRETER_TEST_MODELS_FLOAT_UNIDIRECTIONAL_LSTM_KERNEL_H
-#define LUCI_INTERPRETER_TEST_MODELS_FLOAT_UNIDIRECTIONAL_LSTM_KERNEL_H
+#ifndef ONERT_MICRO_TEST_MODELS_UNIDIRECTIONAL_SEQUENCE_LSTM_KERNEL_FLOAT_H
+#define ONERT_MICRO_TEST_MODELS_UNIDIRECTIONAL_SEQUENCE_LSTM_KERNEL_FLOAT_H
 
-#include "TestDataUnidirectionalLSTMBase.h"
+#include "TestDataUnidirectionalSequenceLSTMBase.h"
 
-namespace luci_interpreter
+namespace onert_micro
 {
-namespace test_kernel
+namespace test_model
 {
-namespace unidir_lstm_float
+namespace unidirectional_sequence_lstm_float
 {
 /*
  * UnidirectionalLSTM Kernel:
@@ -174,22 +174,22 @@ const std::vector<float> reference_output_data = {0.7613201,      -0.7570043,   
                                                   -4.3364323e-11, -0.7613433,   1.3437739e-08,
                                                   -0.7613537,     -7.000451e-08};
 
-} // namespace unidir_lstm_float
+} // namespace unidirectional_sequence_lstm_float
 
-class TestDataFloatUnidirectionalLSTM : public TestDataUnidirectionalLSTMBase<float>
+class TestDataFloatUnidirectionalSequenceLSTM : public TestDataUnidirectionalSequenceLSTMBase<float>
 {
 public:
-  TestDataFloatUnidirectionalLSTM()
+  TestDataFloatUnidirectionalSequenceLSTM()
   {
-    _input_data = unidir_lstm_float::input_data;
-    _reference_output_data = unidir_lstm_float::reference_output_data;
-    _test_kernel_model_circle = unidir_lstm_float::test_kernel_model_circle;
+    _input_data = unidirectional_sequence_lstm_float::input_data;
+    _reference_output_data = unidirectional_sequence_lstm_float::reference_output_data;
+    _test_kernel_model_circle = unidirectional_sequence_lstm_float::test_kernel_model_circle;
   }
 
-  ~TestDataFloatUnidirectionalLSTM() override = default;
+  ~TestDataFloatUnidirectionalSequenceLSTM() override = default;
 };
 
-} // namespace test_kernel
-} // namespace luci_interpreter
+} // namespace test_model
+} // namespace onert_micro
 
-#endif // LUCI_INTERPRETER_TEST_MODELS_FLOAT_UNIDIRECTIONAL_LSTM_KERNEL_H
+#endif // ONERT_MICRO_TEST_MODELS_UNIDIRECTIONAL_SEQUENCE_LSTM_KERNEL_FLOAT_H

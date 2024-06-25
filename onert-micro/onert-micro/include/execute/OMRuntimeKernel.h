@@ -23,29 +23,107 @@
 
 #include <cstdint>
 
-constexpr static uint32_t maxInputSize = 5;
-constexpr static uint32_t maxOutputSize = 5;
-
 namespace onert_micro
 {
 namespace execute
 {
-
-class OMRuntimeKernel
+template <uint32_t maxInputSize, uint32_t maxOutputSize> class OMBaseRuntimeKernel
 {
 public:
-  OMRuntimeKernel() = default;
-  OMRuntimeKernel(const OMRuntimeKernel &) = delete;
-  OMRuntimeKernel(OMRuntimeKernel &&) = delete;
-  ~OMRuntimeKernel() = default;
-  OMRuntimeKernel &operator=(const OMRuntimeKernel &) = delete;
-  OMRuntimeKernel &&operator=(const OMRuntimeKernel &&) = delete;
+  OMBaseRuntimeKernel() = default;
+  OMBaseRuntimeKernel(const OMBaseRuntimeKernel &) = delete;
+  OMBaseRuntimeKernel(OMBaseRuntimeKernel &&) = delete;
+  ~OMBaseRuntimeKernel() = default;
+  OMBaseRuntimeKernel &operator=(const OMBaseRuntimeKernel &) = delete;
+  OMBaseRuntimeKernel &&operator=(const OMBaseRuntimeKernel &&) = delete;
 
 public:
-  OMStatus readKernel(uint16_t op_index, core::OMRuntimeContext &runtime_context);
+  OMStatus readKernel(uint16_t op_index, core::OMRuntimeContext &runtime_context)
+  {
+    {
+      first_operator = runtime_context.getCircleOperatorAt(op_index);
+      const circle::Operator *last_operator = runtime_context.getCircleOperatorAt(op_index);
+
+      inputs_num = first_operator->inputs()->size();
+      assert(inputs_num < maxInputSize);
+
+      if (inputs_num >= maxInputSize)
+        return UnknownError;
+
+      outputs_num = last_operator->outputs()->size();
+      assert(outputs_num < maxOutputSize);
+
+      if (outputs_num >= maxOutputSize)
+        return UnknownError;
+
+      assert(inputs_num > 0 and outputs_num > 0);
+
+      // Read inputs
+      {
+        const auto *inputs_op = first_operator->inputs();
+        for (uint32_t i = 0; i < inputs_num; ++i)
+        {
+          inputs_index[i] = inputs_op->operator[](i);
+          if (inputs_index[i] != -1)
+            inputs[i] = runtime_context.getTensorByIndex(inputs_index[i]);
+        }
+      }
+      // Read outputs
+      {
+        const auto *outputs_op = last_operator->outputs();
+        for (uint32_t i = 0; i < outputs_num; ++i)
+        {
+          outputs_index[i] = outputs_op->operator[](i);
+          if (outputs_index[i] != -1)
+            outputs[i] = runtime_context.getTensorByIndex(outputs_index[i]);
+        }
+      }
+
+      return Ok;
+    }
+  }
 
   OMStatus getDataFromStorage(uint16_t op_index, core::OMRuntimeStorage &storage,
-                              core::OMRuntimeContext &context);
+                              core::OMRuntimeContext &context)
+  {
+    {
+      OMStatus status = Ok;
+
+      for (uint32_t i = 0; i < inputs_num; ++i)
+      {
+        if (inputs_index[i] == -1)
+          continue;
+        status = storage.getDataByTensorIndex(&inputs_data[i], inputs_index[i]);
+        if (inputs_data[i] == nullptr)
+          status = context.getConstDataByTensorIndex(&inputs_data[i], inputs_index[i]);
+        if (status != Ok)
+          return status;
+      }
+
+      for (uint32_t i = 0; i < outputs_num; ++i)
+      {
+        if (outputs_index[i] == -1)
+          continue;
+        status = storage.getDataByTensorIndex(&outputs_data[i], outputs_index[i]);
+
+        if (status != Ok)
+          return status;
+
+        if (storage.getKernelType(op_index) == core::Inplace)
+        {
+          outputs_data[i] = inputs_data[i];
+          status = storage.removeTensorFromTensorIndexToData(inputs_index[i]);
+
+          if (status != Ok)
+            return status;
+
+          status = storage.saveDataToTensorIndex(outputs_data[i], outputs_index[i]);
+        }
+      }
+
+      return status;
+    }
+  }
 
 public:
   const circle::Tensor *inputs[maxInputSize] = {nullptr};
@@ -62,7 +140,9 @@ public:
 
   const circle::Operator *first_operator = nullptr;
 };
-
+class OMRuntimeKernel : public OMBaseRuntimeKernel<5, 5>
+{
+};
 } // namespace execute
 } // namespace onert_micro
 
