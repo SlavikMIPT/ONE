@@ -40,7 +40,9 @@ endif()
 
 # TODO move it to specific cmake for platforms
 add_compile_options(-fno-exceptions)
-add_compile_options(-Os)
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_options(-Os)
+endif()
 
 # AFAIK, this will enable leak sanitizer, too
 if(ENABLE_SANITIZER)

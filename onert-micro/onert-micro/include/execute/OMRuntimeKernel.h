@@ -45,15 +45,15 @@ public:
       const circle::Operator *last_operator = runtime_context.getCircleOperatorAt(op_index);
 
       inputs_num = first_operator->inputs()->size();
-      assert(inputs_num < maxInputSize);
+      assert(inputs_num <= maxInputSize);
 
-      if (inputs_num >= maxInputSize)
+      if (inputs_num > maxInputSize)
         return UnknownError;
 
       outputs_num = last_operator->outputs()->size();
-      assert(outputs_num < maxOutputSize);
+      assert(outputs_num <= maxOutputSize);
 
-      if (outputs_num >= maxOutputSize)
+      if (outputs_num > maxOutputSize)
         return UnknownError;
 
       assert(inputs_num > 0 and outputs_num > 0);

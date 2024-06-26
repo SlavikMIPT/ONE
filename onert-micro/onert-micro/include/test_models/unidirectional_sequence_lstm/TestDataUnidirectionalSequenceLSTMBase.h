@@ -32,12 +32,17 @@ public:
 
   const std::vector<T> &get_input_data_by_index(int i) override final
   {
-    switch (i)
+    if (i == 0)
     {
-      case 0:
-        return _input_data;
-      default:
-        assert(false && "Wrong input index");
+      return _input_data;
+    }
+    else if (i < 24)
+    {
+      return _inputx_data;
+    }
+    else
+    {
+      assert(false && "Wrong input index");
     }
   }
 
@@ -49,6 +54,7 @@ public:
 
 protected:
   std::vector<T> _input_data;
+  std::vector<T> _inputx_data;
   std::vector<T> _reference_output_data;
   const unsigned char *_test_kernel_model_circle;
 };

@@ -119,6 +119,13 @@ struct ArithmeticQuantParams
   int32_t quantized_activation_min;
 };
 
+struct ArithmeticParams : ArithmeticQuantParams
+{
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+};
+
 struct BinaryArithmeticBroadcastParams
 {
   // float activation params.

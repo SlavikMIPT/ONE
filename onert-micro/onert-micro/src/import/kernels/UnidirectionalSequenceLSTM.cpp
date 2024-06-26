@@ -19,7 +19,6 @@
 #include "OMStatus.h"
 #include "execute/OMRuntimeKernel.h"
 
-#include <algorithm>
 #include <array>
 using namespace onert_micro;
 using namespace onert_micro::core;
@@ -52,9 +51,9 @@ constexpr int kOutputLayerNormCoefficientsTensorIdx = 23;
 
 constexpr int kOutputTensorIdx = 0;
 
-class OMLSTMRuntimeKernel : public execute::OMBaseRuntimeKernel<24, 5>
-{
-};
+constexpr uint32_t kMaxInputSize = 24;
+constexpr uint32_t kMaxOutputSize = 5;
+
 } // namespace
 
 OMStatus onert_micro::import::configure_kernel_CircleUnidirectionalSequenceLSTM(
@@ -63,7 +62,7 @@ OMStatus onert_micro::import::configure_kernel_CircleUnidirectionalSequenceLSTM(
   OMRuntimeContext &runtime_context = config_args.runtime_context;
   uint16_t op_index = config_args.kernel_index;
 
-  OMLSTMRuntimeKernel runtime_kernel;
+  execute::OMBaseRuntimeKernel<kMaxInputSize, kMaxOutputSize> runtime_kernel;
 
   OMStatus status = runtime_kernel.readKernel(op_index, runtime_context);
   if (status != Ok)

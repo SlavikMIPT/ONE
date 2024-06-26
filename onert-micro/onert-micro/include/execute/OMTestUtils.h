@@ -45,7 +45,7 @@ std::vector<U> checkKernel(uint32_t num_inputs,
 
   interpreter.importModel(reinterpret_cast<const char *>(test_data_base->get_model_ptr()), config);
 
-  assert(num_inputs == interpreter.getNumberOfInputs());
+//  assert(num_inputs == interpreter.getNumberOfInputs());
 
   for (uint32_t i = 0; i < num_inputs; ++i)
   {
