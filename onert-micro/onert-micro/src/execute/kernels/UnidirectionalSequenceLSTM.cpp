@@ -23,39 +23,6 @@
 using namespace onert_micro;
 using namespace onert_micro::execute;
 
-namespace
-{
-constexpr int kInputTensorIdx = 0;
-constexpr int kInputToInputWeightsTensorIdx = 1;
-constexpr int kInputToForgetWeightsTensorIdx = 2;
-constexpr int kInputToCellWeightsTensorIdx = 3;
-constexpr int kInputToOutputWeightsTensorIdx = 4;
-constexpr int kRecurrentToInputWeightsTensorIdx = 5;
-constexpr int kRecurrentToForgetWeightsTensorIdx = 6;
-constexpr int kRecurrentToCellWeightsTensorIdx = 7;
-constexpr int kRecurrentToOutputWeightsTensorIdx = 8;
-constexpr int kCellToInputWeightsTensorIdx = 9;
-constexpr int kCellToForgetWeightsTensorIdx = 10;
-constexpr int kCellToOutputWeightsTensorIdx = 11;
-constexpr int kInputGateBiasTensorIdx = 12;
-constexpr int kForgetGateBiasTensorIdx = 13;
-constexpr int kCellGateBiasTensorIdx = 14;
-constexpr int kOutputGateBiasTensorIdx = 15;
-constexpr int kProjectionWeightsTensorIdx = 16;
-constexpr int kProjectionBiasTensorIdx = 17;
-constexpr int kActivationStateTensorIdx = 18;
-constexpr int kCellStateTensorIdx = 19;
-constexpr int kInputLayerNormCoefficientsTensorIdx = 20;
-constexpr int kForgetLayerNormCoefficientsTensorIdx = 21;
-constexpr int kCellLayerNormCoefficientsTensorIdx = 22;
-constexpr int kOutputLayerNormCoefficientsTensorIdx = 23;
-
-constexpr int kOutputTensorIdx = 0;
-
-constexpr uint32_t kMaxInputSize = 24;
-constexpr uint32_t kMaxOutputSize = 5;
-
-} // namespace
 execute::pal::CellStateInfo buildLstmCellStateInfoFloat(const float cell_clip)
 {
   execute::pal::CellStateInfo cell_state_info;
@@ -72,22 +39,29 @@ OMStatus onert_micro::execute::execute_kernel_CircleUnidirectionalSequenceLSTM(
   uint16_t op_index = execute_args.kernel_index;
 
   const circle::Tensor *input = nullptr;
+  const circle::Tensor *cell_state = nullptr;
+  const circle::Tensor *activation_state = nullptr;
   const circle::Tensor *output = nullptr;
 
   uint8_t *input_data = nullptr;
+  uint8_t *cell_state_data = nullptr;
   uint8_t *output_data = nullptr;
 
   OMStatus status = Ok;
   const circle::UnidirectionalSequenceLSTMOptions *options = nullptr;
-
+  execute::OMLSTMRuntimeKernel runtime_kernel;
   {
-    execute::OMBaseRuntimeKernel<kMaxInputSize, kMaxOutputSize> runtime_kernel;
+
     runtime_kernel.readKernel(op_index, runtime_context);
 
     input = runtime_kernel.inputs[kInputTensorIdx];
+    cell_state = runtime_kernel.inputs[kCellStateTensorIdx];
+    activation_state = runtime_kernel.inputs[kActivationStateTensorIdx];
     output = runtime_kernel.outputs[kOutputTensorIdx];
 
     assert(input != nullptr);
+    assert(cell_state != nullptr);
+    assert(activation_state != nullptr);
     assert(output != nullptr);
 
     status = runtime_kernel.getDataFromStorage(op_index, runtime_storage, runtime_context);
@@ -95,11 +69,13 @@ OMStatus onert_micro::execute::execute_kernel_CircleUnidirectionalSequenceLSTM(
       return status;
 
     input_data = runtime_kernel.inputs_data[kInputTensorIdx];
+    cell_state_data = runtime_kernel.inputs_data[kCellStateTensorIdx];
     output_data = runtime_kernel.outputs_data[kOutputTensorIdx];
-    options = runtime_kernel.first_operator->builtin_options_as_UnidirectionalSequenceLSTMOptions();
   }
+  execute::pal::LSTMStruct lstm_struct(runtime_kernel);
 
   assert(input_data != nullptr);
+  assert(cell_state_data != nullptr);
   assert(output_data != nullptr);
 
   switch (input->type())
@@ -108,8 +84,11 @@ OMStatus onert_micro::execute::execute_kernel_CircleUnidirectionalSequenceLSTM(
 
     case circle::TensorType_FLOAT32:
       status = pal::UnidirectionalSequenceLSTM<float>(
-        core::OMRuntimeShape(input), core::utils::castInputData<float>(input_data), options,
-        core::OMRuntimeShape(output), core::utils::castOutputData<float>(output_data));
+        core::OMRuntimeShape(input), core::utils::castInputData<float>(input_data),
+        core::OMRuntimeShape(cell_state), cell_state_data,
+        core::onertMicroDatatype(cell_state->type()), core::OMRuntimeShape(activation_state),
+        lstm_struct, core::OMRuntimeShape(output),
+        core::utils::castOutputData<float>(output_data));
       break;
 #endif // DIS_FLOAT
     default:
@@ -119,5 +98,5 @@ OMStatus onert_micro::execute::execute_kernel_CircleUnidirectionalSequenceLSTM(
     }
   }
 
-  return Ok;
+  return status;
 }

@@ -143,6 +143,9 @@ public:
 class OMRuntimeKernel : public OMBaseRuntimeKernel<5, 5>
 {
 };
+class OMLSTMRuntimeKernel : public OMBaseRuntimeKernel<24, 5>
+{
+};
 } // namespace execute
 } // namespace onert_micro
 
