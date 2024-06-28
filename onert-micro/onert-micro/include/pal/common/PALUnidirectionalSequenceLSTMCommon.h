@@ -26,6 +26,8 @@
 #include "execute/OMUtils.h"
 #include "OMStatus.h"
 
+#include "PALTanh.h"
+#include "PALMul.h"
 #include "PALFullyConnected.h"
 
 #include <cassert>
@@ -228,7 +230,23 @@ struct LSTMStruct
     return _output_layer_norm_coefficients;
   }
   const circle::Tensor *output() const { return _output; }
+
   const circle::UnidirectionalSequenceLSTMOptions *options() const { return _options; };
+
+  const uint8_t *input_data = nullptr;
+  const uint8_t *input_to_forget_weights_data = nullptr;
+  const uint8_t *input_to_input_weights_data = nullptr;
+  const uint8_t *input_to_cell_weights_data = nullptr;
+
+  const uint8_t *forget_gate_bias_data = nullptr;
+  const uint8_t *input_gate_bias_data = nullptr;
+  const uint8_t *cell_gate_bias_data = nullptr;
+
+  const uint8_t *recurrent_to_forget_weights_data = nullptr;
+  const uint8_t *recurrent_to_input_weights_data = nullptr;
+  const uint8_t *recurrent_to_cell_weights_data = nullptr;
+
+  const uint8_t *activation_state_data = nullptr;
 
 private:
   const circle::Tensor *_input = nullptr;
@@ -296,6 +314,26 @@ struct LSTMParameters
   GateParameters output_gate_parameters;
   InterGateParameters inter_gate_parameters;
 };
+
+template <typename T>
+inline void addElementWise(const T *input_1, const T *input_2, int n_batch, int n_input, T *output)
+{
+  assert(false && "Not Implemented Yet");
+}
+
+template <>
+inline void addElementWise<float>(const float *input_1, const float *input_2, int n_batch,
+                                  int n_input, float *output)
+{
+  for (int batch = 0; batch < n_batch; ++batch)
+  {
+    for (int i = 0; i < n_input; ++i)
+    {
+      const int index = batch * n_input + i;
+      output[index] = input_1[index] + input_2[index];
+    }
+  }
+}
 
 template <typename T> inline core::FullyConnectedParams createFCParameters()
 {
@@ -452,21 +490,20 @@ private:
 //   gate = activate(FC(input) + FC(recurrent))
 // Activation is sigmoid except for the "cell" gate (configurable, usually tanh)
 template <typename ActivationType, typename WeightType, typename CellType, typename BiasType>
-OMStatus calculateLstmGate(
-  const LstmStepManager &step_info, const GateParameters &gate_params,
-  // Input FC
-  ActivationType *input_data, const core::OMRuntimeShape &input_weight_shape,
-  const WeightType *input_weight_data, const core::OMRuntimeShape &input_bias_shape,
-  const BiasType *input_bias_data,
-  // Recurrent FC
-  ActivationType *recurrent_data, const core::OMRuntimeShape &recurrent_weight_shape,
-  const WeightType *recurrent_weight_data, const core::OMRuntimeShape &recurrent_bias_shape,
-  const BiasType *recurrent_bias_data,
-  // Output
-  CellType *gate_output,
-  // Scratch arrays
-  CellType *fc_output_buffer, const circle::ActivationFunctionType activation,
-  core::OMRuntimeGraph *runtime_graph)
+OMStatus
+calculateLstmGate(const LstmStepManager &step_info, const GateParameters &gate_params,
+                  // Input FC
+                  const ActivationType *input_data, const core::OMRuntimeShape &input_weight_shape,
+                  const WeightType *input_weight_data, const core::OMRuntimeShape &input_bias_shape,
+                  const BiasType *input_bias_data,
+                  // Recurrent FC
+                  const ActivationType *recurrent_data,
+                  const core::OMRuntimeShape &recurrent_weight_shape,
+                  const WeightType *recurrent_weight_data, const BiasType *recurrent_bias_data,
+                  // Output
+                  CellType *gate_output,
+                  // Scratch arrays
+                  CellType *fc_output_buffer, const circle::ActivationFunctionType activation)
 {
   OMStatus status = Ok;
   // Input FC
@@ -483,171 +520,225 @@ OMStatus calculateLstmGate(
     op_params.float_activation_max = gate_params.input_fc_params.float_activation_max;
     op_params.float_activation_min = gate_params.input_fc_params.float_activation_min;
 
-    status =
-      FullyConnected(op_params, core::utils::castInputData<float>(input_data), input_weight_shape,
-                     core::utils::castInputData<float>(input_weight_data),
-                     core::utils::castInputData<float>(input_bias_data), gate_output_shape,
-                     core::utils::castOutputData<float>(gate_output));
+    status = FullyConnected(op_params, input_data, input_weight_shape, input_weight_data,
+                            input_bias_data, gate_output_shape, gate_output);
   }
 
   // Recurrent FC
-  //  {
-  //    core::FullyConnectedParams op_params{};
-  //    op_params.input_offset = gate_params.recurrent_fc_params.input_offset;
-  //    op_params.weights_offset = gate_params.recurrent_fc_params.weights_offset;
-  //    op_params.output_offset = gate_params.recurrent_fc_params.output_offset;
-  //    op_params.output_multiplier = gate_params.recurrent_fc_params.output_multiplier;
-  //    op_params.output_shift = gate_params.recurrent_fc_params.output_shift;
-  //    op_params.quantized_activation_min =
-  //    gate_params.recurrent_fc_params.quantized_activation_min; op_params.quantized_activation_max
-  //    = gate_params.recurrent_fc_params.quantized_activation_max; op_params.float_activation_max =
-  //    gate_params.recurrent_fc_params.float_activation_max; op_params.float_activation_min =
-  //    gate_params.recurrent_fc_params.float_activation_min;
+  {
+    core::FullyConnectedParams op_params{};
+    op_params.input_offset = gate_params.recurrent_fc_params.input_offset;
+    op_params.weights_offset = gate_params.recurrent_fc_params.weights_offset;
+    op_params.output_offset = gate_params.recurrent_fc_params.output_offset;
+    op_params.output_multiplier = gate_params.recurrent_fc_params.output_multiplier;
+    op_params.output_shift = gate_params.recurrent_fc_params.output_shift;
+    op_params.quantized_activation_min = gate_params.recurrent_fc_params.quantized_activation_min;
+    op_params.quantized_activation_max = gate_params.recurrent_fc_params.quantized_activation_max;
+    op_params.float_activation_max = gate_params.recurrent_fc_params.float_activation_max;
+    op_params.float_activation_min = gate_params.recurrent_fc_params.float_activation_min;
 
-  //    int32_t recurrent_weight_shape[luci_interpreter::kMaxSmallSize];
-  //    luci_interpreter::kernels::getTensorDims(recurrent_weight, runtime_graph,
-  //                                             recurrent_weight_shape);
+    status =
+      FullyConnected(op_params, recurrent_data, recurrent_weight_shape, recurrent_weight_data,
+                     recurrent_bias_data, gate_output_shape, fc_output_buffer);
+  }
+  {
 
-  //    FullyConnected(op_params, step_info->stateShape().dimsData(),
-  //                   recurrent_data + step_info->hiddenStateOffset(), recurrent_weight_shape,
-  //                   luci_interpreter::kernels::getTensorData<WeightType>(
-  //                     runtime_graph->getConstDataByTensor(recurrent_weight)),
-  //                   luci_interpreter::kernels::getTensorData<BiasType>(
-  //                     runtime_graph->getConstDataByTensor(recurrent_bias)),
-  //                   gate_output_shape.dimsData(), fc_output_buffer,
-  //                   gate_output_shape.dimensionsCount(),
-  //                   luci_interpreter::Tensor::num_dims(recurrent_weight));
-  //
-  //    addElementWise(gate_output, fc_output_buffer, /*n_batch=*/gate_output_shape.dimsData()[0],
-  //                   /*n_state=*/gate_output_shape.dimsData()[1], gate_output);
-  //
-  //    switch (activation)
-  //    {
-  //      case FusedActivation::kTfLiteActSigmoid:
-  //        sigmoid(gate_output_shape, gate_output);
-  //        break;
-  //      case FusedActivation::kTfLiteActTanh:
-  //      {
-  //        // Set the scale power to -12 to avoid shift
-  //        tanh(/*cell_state_scale_power=*/-12, gate_output_shape, gate_output, gate_output_shape,
-  //             gate_output);
-  //      }
-  //      break;
-  //      default:
-  //        // Only Sigmoid or Tanh is used.
-  //        assert(false && "Only Sigmoid or Tanh is used");
-  //    }
-  //  }
+    addElementWise<CellType>(gate_output, fc_output_buffer,
+                             /*n_batch=*/gate_output_shape.dimsData()[0],
+                             /*n_state=*/gate_output_shape.dimsData()[1], gate_output);
+
+    switch (activation)
+    {
+        // TODO: support sigmoid
+      case circle::ActivationFunctionType::ActivationFunctionType_TANH:
+      {
+        Tanh(gate_output_shape, input_data, gate_output_shape, gate_output);
+      }
+      break;
+      default:
+        // Only Tanh is used.
+        assert(false && "Only Tanh is used");
+    }
+  }
   return status;
 }
+// Update the hidden state of the LSTM kernel using the following formula:
+// updated_hidden_state = Tanh(updated_cell_state) * output_gate_output, * means
+// element wise multiplication
+template <typename CellType, typename ActivationType>
+void updateLstmHidden(const LstmStepManager &step_info, CellType *cell_state_data_base,
+                      ActivationType *hidden_state_data, const CellType &output_gate_output,
+                      const core::ArithmeticParams &mul_params, int32_t cell_state_scale_power,
+                      CellType *buffer)
+{
+  auto cell_state_shape = step_info.stateShape();
+  CellType *cell_state_data = cell_state_data_base + step_info.cellStateOffset();
+  // Tanh(cell_state)
+  tanh(cell_state_scale_power, cell_state_shape, cell_state_data, cell_state_shape, buffer);
+  // Update the hidden state
+  mul(cell_state_shape, mul_params, buffer, output_gate_output,
+      hidden_state_data + step_info.hiddenStateOffset());
+}
 
-// template <typename ActivationType, typename WeightType, typename CellType, typename BiasType>
-// void lstmStep(const LSTMStruct &lstm_struct, const LSTMParameters &lstm_params,
-//               LstmStepManager &step_info, const CellStateInfo &cell_state_info,
-//               ActivationType *activation_state_data, CellType *cell_state_data, CellType
-//               *scratch0, CellType *scratch1, CellType *scratch2, CellType *scratch3,
-//               core::OMRuntimeGraph *runtime_graph)
-//{
-//   /*Step1: Calculate gate outputs to prepare cell state update*/
-//   CellType *gate_internal_buffer = scratch3;
-//   CellType *forget_gate_output = scratch0;
-//
-//   auto input_data = luci_interpreter::kernels::getTensorData<ActivationType>(
-//     runtime_graph->getDataByTensor(lstm_struct.input()));
-//
-//   calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
-//     step_info, &lstm_params->forget_gate_parameters,
-//     // Input FC
-//     input_data, lstm_struct->input_to_forget_weights(), lstm_struct->forget_gate_bias(),
-//     // Recurrent FC
-//     output_state_data, lstm_struct->recurrent_to_forget_weights(), nullptr,
-//     // Output
-//     forget_gate_output, gate_internal_buffer, FusedActivation::kTfLiteActSigmoid, runtime_graph);
-//
-//   // Input Gate calculation;
-//   CellType *input_gate_output = scratch1;
-//   calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
-//     step_info, &lstm_params->input_gate_parameters,
-//     // Input FC
-//     input_data, lstm_struct->input_to_input_weights(), lstm_struct->input_gate_bias(),
-//     // Recurrent FC
-//     output_state_data, lstm_struct->recurrent_to_input_weights(),
-//     /*recurrent_bias*/ nullptr,
-//     // Output
-//     input_gate_output,
-//     // Scratch arrays
-//     gate_internal_buffer, FusedActivation::kTfLiteActSigmoid, runtime_graph);
-//
-//   // Cell Gate calculation
-//   CellType *cell_gate_output = scratch2;
-//   calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
-//     step_info, &lstm_params->cell_gate_parameters,
-//     // Input FC
-//     input_data, lstm_struct->input_to_cell_weights(), lstm_struct->cell_gate_bias(),
-//     // Recurrent FC
-//     output_state_data, lstm_struct->recurrent_to_cell_weights(),
-//     /*recurrent_bias*/ nullptr,
-//     // Output
-//     cell_gate_output,
-//     // Scratch arrays
-//     gate_internal_buffer, FusedActivation::kTfLiteActTanh, runtime_graph);
-//
-//   /*Step2: update the cell state */
-//   {
-//     // const InterGateParameters& inter_gate_params = op_data.inter_gate_parameters;
-//     CellType *updated_input_buffer = scratch1; // reuse buffer
-//
-//     updateLstmCell<CellType>(
-//       step_info, cell_state_data, forget_gate_output, input_gate_output, cell_gate_output,
-//       lstm_params->inter_gate_parameters.forget_cell_mul_params,
-//       lstm_params->inter_gate_parameters.input_mul_params, cell_state_info,
-//       updated_input_buffer);
-//   }
-//
-//   {
-//     /*Step3: update the hidden state */
-//     CellType *output_gate_output = scratch1; // reuse buffer
-//     calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
-//       step_info, &lstm_params->output_gate_parameters,
-//       // Input FC
-//       input_data, lstm_struct->input_to_output_weights(), lstm_struct->output_gate_bias(),
-//       // Recurrent FC
-//       output_state_data, lstm_struct->recurrent_to_output_weights(), nullptr,
-//       // Output
-//       output_gate_output,
-//       // Scratch arrays
-//       gate_internal_buffer, FusedActivation::kTfLiteActSigmoid, runtime_graph);
-//     CellType *tanh_activated_cell_buffer = scratch0; // reuse buffer
-//     updateLstmHidden<CellType, ActivationType>(
-//       step_info, cell_state_data, output_state_data, output_gate_output,
-//       &lstm_params->inter_gate_parameters.output_mul_params,
-//       cell_state_info->cell_state_scale_power, tanh_activated_cell_buffer);
-//
-//     ActivationType *output_ptr = luci_interpreter::kernels::getTensorData<ActivationType>(
-//       runtime_graph->getDataByTensor(lstm_struct->output()));
-//     std::memcpy(output_ptr + step_info->outputOffset(),
-//                 output_state_data + step_info->hiddenStateOffset(),
-//                 step_info->stateShape().flatSize() * sizeof(ActivationType));
-//   }
-// }
+// Update the cell state using the output from the forget gate, input gate, and
+// cell gate Formula: updated_cell_state = forget_gate_output*cell_state +
+// input_gate_output * cell_gate_output, where * denotes element wise
+// multiplication
+template <typename CellType>
+void updateLstmCell(const LstmStepManager &step_info, CellType *cell_state_data,
+                    // Gate outputs
+                    CellType *forget_gate_output, const CellType *input_gate_output,
+                    const CellType *cell_gate_output,
+                    // Mul parameters
+                    const core::ArithmeticParams &forget_cell_mul_params,
+                    const core::ArithmeticParams &input_mul_params,
+                    const CellStateInfo &cell_state_info, CellType *buffer)
+{
+  auto cell_state_shape = step_info.stateShape();
+  // Forget Gate x Cell State
+  Mul<CellType>(&forget_cell_mul_params, cell_state_shape.flatSize(),
+                const_cast<const CellType *>(forget_gate_output),
+                const_cast<const CellType *>(cell_state_data + step_info.cellStateOffset()),
+                cell_state_data + step_info.cellStateOffset());
+  // Input Gate x Cell Gate
+  Mul<CellType>(&input_mul_params, cell_state_shape.flatSize(),
+                const_cast<const CellType *>(input_gate_output),
+                const_cast<const CellType *>(cell_gate_output), buffer);
+
+  // Update the cell state
+  addElementWise(cell_state_data + step_info.cellStateOffset(), buffer,
+                 /*n_batch=*/cell_state_shape.dimsData()[0],
+                 /*n_state=*/cell_state_shape.dimsData()[1],
+                 cell_state_data + step_info.cellStateOffset());
+
+  if (cell_state_info.cell_clip > 0)
+  {
+    clipping(cell_state_shape.flatSize(), cell_state_info,
+             cell_state_data + step_info.cellStateOffset());
+  }
+}
+
+template <typename ActivationType, typename WeightType, typename CellType, typename BiasType>
+void lstmStep(const LSTMStruct &lstm_struct, const LSTMParameters &lstm_params,
+              LstmStepManager &step_info, const CellStateInfo &cell_state_info,
+              const ActivationType *activation_state_data, const CellType *cell_state_data,
+              CellType *scratch0, CellType *scratch1, CellType *scratch2, CellType *scratch3)
+{
+  //   /*Step1: Calculate gate outputs to prepare cell state update*/
+  CellType *gate_internal_buffer = scratch3;
+  CellType *forget_gate_output = scratch0;
+
+  calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
+    step_info, lstm_params.forget_gate_parameters,
+    // Input FC
+    reinterpret_cast<const float *>(lstm_struct.input_data),
+    core::OMRuntimeShape(lstm_struct.input_to_forget_weights()),
+    reinterpret_cast<const float *>(lstm_struct.input_to_forget_weights_data),
+    core::OMRuntimeShape(lstm_struct.forget_gate_bias()),
+    reinterpret_cast<const float *>(lstm_struct.forget_gate_bias_data),
+    // Recurrent FC
+    reinterpret_cast<const float *>(lstm_struct.activation_state_data),
+    core::OMRuntimeShape(lstm_struct.recurrent_to_forget_weights()),
+    reinterpret_cast<const float *>(lstm_struct.recurrent_to_forget_weights_data), nullptr,
+    // Output
+    forget_gate_output, gate_internal_buffer,
+    circle::ActivationFunctionType::ActivationFunctionType_TANH);
+  //
+  //   // Input Gate calculation;
+  CellType *input_gate_output = scratch1;
+  calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
+    step_info, lstm_params.forget_gate_parameters,
+    // Input FC
+    reinterpret_cast<const float *>(lstm_struct.input_data),
+    core::OMRuntimeShape(lstm_struct.input_to_input_weights()),
+    reinterpret_cast<const float *>(lstm_struct.input_to_input_weights_data),
+    core::OMRuntimeShape(lstm_struct.input_gate_bias()),
+    reinterpret_cast<const float *>(lstm_struct.input_gate_bias_data),
+    // Recurrent FC
+    reinterpret_cast<const float *>(lstm_struct.activation_state_data),
+    core::OMRuntimeShape(lstm_struct.recurrent_to_input_weights()),
+    reinterpret_cast<const float *>(lstm_struct.recurrent_to_input_weights_data),
+    /*recurrent_bias*/ nullptr,
+    // Output
+    input_gate_output,
+    // Scratch arrays
+    gate_internal_buffer, circle::ActivationFunctionType::ActivationFunctionType_TANH);
+
+  // Cell Gate calculation
+  CellType *cell_gate_output = scratch2;
+  calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
+    step_info, lstm_params.forget_gate_parameters,
+    // Input FC
+    reinterpret_cast<const float *>(lstm_struct.input_data),
+    core::OMRuntimeShape(lstm_struct.input_to_cell_weights()),
+    reinterpret_cast<const float *>(lstm_struct.input_to_cell_weights_data),
+    core::OMRuntimeShape(lstm_struct.cell_gate_bias()),
+    reinterpret_cast<const float *>(lstm_struct.cell_gate_bias_data),
+    // Recurrent FC
+    reinterpret_cast<const float *>(lstm_struct.activation_state_data),
+    core::OMRuntimeShape(lstm_struct.recurrent_to_cell_weights()),
+    reinterpret_cast<const float *>(lstm_struct.recurrent_to_cell_weights_data),
+    /*recurrent_bias*/ nullptr,
+    // Output
+    cell_gate_output,
+    // Scratch arrays
+    gate_internal_buffer, circle::ActivationFunctionType::ActivationFunctionType_TANH);
+
+  /*Step2: update the cell state */
+  {
+    // const InterGateParameters& inter_gate_params = op_data.inter_gate_parameters;
+    CellType *updated_input_buffer = scratch1; // reuse buffer
+
+    updateLstmCell<CellType>(step_info, const_cast<CellType *>(cell_state_data), forget_gate_output,
+                             const_cast<const CellType *>(input_gate_output), cell_gate_output,
+                             lstm_params.inter_gate_parameters.forget_cell_mul_params,
+                             lstm_params.inter_gate_parameters.input_mul_params, cell_state_info,
+                             updated_input_buffer);
+  }
+  //
+  //   {
+  //     /*Step3: update the hidden state */
+  //     CellType *output_gate_output = scratch1; // reuse buffer
+  //     calculateLstmGate<ActivationType, WeightType, CellType, BiasType>(
+  //       step_info, &lstm_params->output_gate_parameters,
+  //       // Input FC
+  //       input_data, lstm_struct->input_to_output_weights(), lstm_struct->output_gate_bias(),
+  //       // Recurrent FC
+  //       output_state_data, lstm_struct->recurrent_to_output_weights(), nullptr,
+  //       // Output
+  //       output_gate_output,
+  //       // Scratch arrays
+  //       gate_internal_buffer, FusedActivation::kTfLiteActSigmoid, runtime_graph);
+  //     CellType *tanh_activated_cell_buffer = scratch0; // reuse buffer
+  //     updateLstmHidden<CellType, ActivationType>(
+  //       step_info, cell_state_data, output_state_data, output_gate_output,
+  //       &lstm_params->inter_gate_parameters.output_mul_params,
+  //       cell_state_info->cell_state_scale_power, tanh_activated_cell_buffer);
+  //
+  //     ActivationType *output_ptr = luci_interpreter::kernels::getTensorData<ActivationType>(
+  //       runtime_graph->getDataByTensor(lstm_struct->output()));
+  //     std::memcpy(output_ptr + step_info->outputOffset(),
+  //                 output_state_data + step_info->hiddenStateOffset(),
+  //                 step_info->stateShape().flatSize() * sizeof(ActivationType));
+  //   }
+}
 } // namespace
 
 template <typename T>
-inline OMStatus UnidirectionalSequenceLSTM(
-  const core::OMRuntimeShape &input_shape, const float *input_data,
-  const core::OMRuntimeShape &cell_state_shape, const uint8_t *cell_state_data,
-  const core::OMDataType &cell_state_type, const core::OMRuntimeShape &activation_state_shape,
-  const LSTMStruct &lstm_struct, const core::OMRuntimeShape &output_shape, float *output_data)
+inline OMStatus
+UnidirectionalSequenceLSTM(const core::OMRuntimeShape &input_shape, const float *input_data,
+                           const core::OMDataType &cell_state_type, const LSTMStruct &lstm_struct,
+                           const core::OMRuntimeShape &output_shape, float *output_data)
 {
   assert(false && "Not Implemented Yet");
 }
 
 template <>
-inline OMStatus UnidirectionalSequenceLSTM<float>(
-  const core::OMRuntimeShape &input_shape, const float *input_data,
-  const core::OMRuntimeShape &cell_state_shape, const uint8_t *cell_state_data,
-  const core::OMDataType &cell_state_type, const core::OMRuntimeShape &activation_state_shape,
-  const LSTMStruct &lstm_struct, const core::OMRuntimeShape &output_shape, float *output_data)
+inline OMStatus
+UnidirectionalSequenceLSTM<float>(const core::OMRuntimeShape &input_shape, const float *input_data,
+                                  const core::OMDataType &cell_state_type,
+                                  const LSTMStruct &lstm_struct,
+                                  const core::OMRuntimeShape &output_shape, float *output_data)
 {
   CellStateInfo cell_state_info{lstm_struct.options()->cell_clip(), 0, 0}; // No quantization
   LSTMParameters lstm_params{};
@@ -668,9 +759,66 @@ inline OMStatus UnidirectionalSequenceLSTM<float>(
     std::make_unique<uint8_t[]>(batch_size * state_dimension * cell_state_type_size);
 
   // Create and fill with 0 output state tensor
-  auto output_state_data = std::make_unique<float[]>(activation_state_shape.flatSize());
-  std::fill_n(output_state_data.get(), activation_state_shape.flatSize(), 0);
+  auto activation_state_data =
+    std::make_unique<float[]>(core::OMRuntimeShape(lstm_struct.activation_state()).flatSize());
+  std::fill_n(activation_state_data.get(),
+              core::OMRuntimeShape(lstm_struct.activation_state()).flatSize(), 0);
 
+  // Create and fill with 0 cell state tensor
+  auto cell_state_data =
+    std::make_unique<float[]>(core::OMRuntimeShape(lstm_struct.cell_state()).flatSize());
+
+  std::fill_n(cell_state_data.get(), core::OMRuntimeShape(lstm_struct.cell_state()).flatSize(), 0);
+
+  LstmSizeInfo size_info;
+  size_info.time_major = time_major;
+  size_info.batch_size = batch_size;
+  size_info.time_steps = size_info.time_major ? input_shape.dims(0) : input_shape.dims(1);
+  size_info.input_dimension = input_shape.dims(2);
+  size_info.state_dimension = core::OMRuntimeShape(lstm_struct.activation_state()).dims(1);
+
+  LstmStepManager step_info(size_info);
+
+  // time is the first dimention, enable batch computation
+  if (size_info.time_major)
+  {
+    for (int t = 0; t < size_info.time_steps; t++)
+    {
+      lstmStep<float, float, float, float>(
+        lstm_struct, lstm_params, step_info, cell_state_info,
+        reinterpret_cast<const float *>(lstm_struct.activation_state_data),
+        reinterpret_cast<float *>(cell_state_data.get()),
+        reinterpret_cast<float *>(scratch_0_data.get()),
+        reinterpret_cast<float *>(scratch_1_data.get()),
+        reinterpret_cast<float *>(scratch_2_data.get()),
+        reinterpret_cast<float *>(scratch_3_data.get()));
+      // prepare for the next time step
+      step_info.updateTime();
+    }
+  }
+  else
+  {
+    // batch first, unable to size the input data. single batch inference
+    for (int b = 0; b < size_info.batch_size; b++)
+    {
+      for (int t = 0; t < size_info.time_steps; t++)
+      {
+        lstmStep<float, float, float, float>(
+          lstm_struct, lstm_params, step_info, cell_state_info,
+          reinterpret_cast<const float *>(lstm_struct.activation_state_data),
+          reinterpret_cast<float *>(cell_state_data.get()),
+          reinterpret_cast<float *>(scratch_0_data.get()),
+          reinterpret_cast<float *>(scratch_1_data.get()),
+          reinterpret_cast<float *>(scratch_2_data.get()),
+          reinterpret_cast<float *>(scratch_3_data.get()));
+        // prepare for the next time step
+        step_info.updateTime();
+      }
+      // prepare for the next batch
+      step_info.updateBatch();
+      step_info.resetTime();
+    }
+  }
   return Ok;
 }
 } // namespace pal

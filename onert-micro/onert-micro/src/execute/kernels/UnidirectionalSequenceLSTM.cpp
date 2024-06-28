@@ -44,6 +44,16 @@ OMStatus onert_micro::execute::execute_kernel_CircleUnidirectionalSequenceLSTM(
   const circle::Tensor *output = nullptr;
 
   uint8_t *input_data = nullptr;
+  uint8_t *input_to_input_weights_data = nullptr;
+  uint8_t *input_to_forget_weights_data = nullptr;
+  uint8_t *input_to_cell_weights_data = nullptr;
+  uint8_t *input_gate_bias_data = nullptr;
+  uint8_t *forget_gate_bias_data = nullptr;
+  uint8_t *cell_gate_bias_data = nullptr;
+  uint8_t *recurrent_to_forget_weights_data = nullptr;
+  uint8_t *recurrent_to_input_weights_data = nullptr;
+  uint8_t *recurrent_to_cell_weights_data = nullptr;
+  uint8_t *activation_state_data = nullptr;
   uint8_t *cell_state_data = nullptr;
   uint8_t *output_data = nullptr;
 
@@ -69,12 +79,56 @@ OMStatus onert_micro::execute::execute_kernel_CircleUnidirectionalSequenceLSTM(
       return status;
 
     input_data = runtime_kernel.inputs_data[kInputTensorIdx];
+    input_to_forget_weights_data = runtime_kernel.inputs_data[kInputToForgetWeightsTensorIdx];
+    input_to_input_weights_data = runtime_kernel.inputs_data[kInputToInputWeightsTensorIdx];
+    input_to_cell_weights_data = runtime_kernel.inputs_data[kInputToCellWeightsTensorIdx];
+
+    recurrent_to_forget_weights_data =
+      runtime_kernel.inputs_data[kRecurrentToForgetWeightsTensorIdx];
+    recurrent_to_input_weights_data = runtime_kernel.inputs_data[kRecurrentToInputWeightsTensorIdx];
+    recurrent_to_cell_weights_data = runtime_kernel.inputs_data[kRecurrentToCellWeightsTensorIdx];
+
+    forget_gate_bias_data = runtime_kernel.inputs_data[kForgetGateBiasTensorIdx];
+    input_gate_bias_data = runtime_kernel.inputs_data[kInputGateBiasTensorIdx];
+    cell_gate_bias_data = runtime_kernel.inputs_data[kCellGateBiasTensorIdx];
+
+    activation_state_data = runtime_kernel.inputs_data[kActivationStateTensorIdx];
+
     cell_state_data = runtime_kernel.inputs_data[kCellStateTensorIdx];
     output_data = runtime_kernel.outputs_data[kOutputTensorIdx];
   }
   execute::pal::LSTMStruct lstm_struct(runtime_kernel);
+  lstm_struct.input_data = input_data;
+  lstm_struct.input_to_forget_weights_data = input_to_forget_weights_data;
+  lstm_struct.input_to_input_weights_data = input_to_input_weights_data;
+  lstm_struct.input_to_cell_weights_data = input_to_cell_weights_data;
 
+  lstm_struct.recurrent_to_forget_weights_data = recurrent_to_forget_weights_data;
+  lstm_struct.recurrent_to_input_weights_data = recurrent_to_input_weights_data;
+  lstm_struct.recurrent_to_cell_weights_data = recurrent_to_cell_weights_data;
+
+  lstm_struct.forget_gate_bias_data = forget_gate_bias_data;
+  lstm_struct.input_gate_bias_data = input_gate_bias_data;
+  lstm_struct.cell_gate_bias_data = cell_gate_bias_data;
+
+  lstm_struct.activation_state_data = activation_state_data;
+
+  if (!lstm_struct.is_valid())
+    return UnknownError;
   assert(input_data != nullptr);
+  assert(input_to_forget_weights_data != nullptr);
+  assert(input_to_input_weights_data != nullptr);
+  assert(input_to_cell_weights_data != nullptr);
+
+  assert(input_gate_bias_data != nullptr);
+  assert(forget_gate_bias_data != nullptr);
+  assert(cell_gate_bias_data != nullptr);
+
+  assert(recurrent_to_forget_weights_data != nullptr);
+  assert(recurrent_to_input_weights_data != nullptr);
+  assert(recurrent_to_cell_weights_data != nullptr);
+
+  assert(activation_state_data != nullptr);
   assert(cell_state_data != nullptr);
   assert(output_data != nullptr);
 
@@ -85,9 +139,7 @@ OMStatus onert_micro::execute::execute_kernel_CircleUnidirectionalSequenceLSTM(
     case circle::TensorType_FLOAT32:
       status = pal::UnidirectionalSequenceLSTM<float>(
         core::OMRuntimeShape(input), core::utils::castInputData<float>(input_data),
-        core::OMRuntimeShape(cell_state), cell_state_data,
-        core::onertMicroDatatype(cell_state->type()), core::OMRuntimeShape(activation_state),
-        lstm_struct, core::OMRuntimeShape(output),
+        core::onertMicroDatatype(cell_state->type()), lstm_struct, core::OMRuntimeShape(output),
         core::utils::castOutputData<float>(output_data));
       break;
 #endif // DIS_FLOAT
