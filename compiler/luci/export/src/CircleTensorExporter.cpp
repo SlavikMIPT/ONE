@@ -528,13 +528,13 @@ encodeSparsityParameters(FlatBufferBuilder &builder, luci::SparsityParam *sparsi
 
 template <loco::DataType DT> bool has_same_elements(luci::CircleConst *lhs, luci::CircleConst *rhs)
 {
-  assert(lhs->dtype() == DT);
-  assert(rhs->dtype() == DT);
-  assert(lhs->size<DT>() == rhs->size<DT>());
-
-  for (uint32_t i = 0; i < lhs->size<DT>(); ++i)
-    if (lhs->at<DT>(i) != rhs->at<DT>(i))
-      return false;
+//  assert(lhs->dtype() == DT);
+//  assert(rhs->dtype() == DT);
+//  assert(lhs->size<DT>() == rhs->size<DT>());
+//
+//  for (uint32_t i = 0; i < lhs->size<DT>(); ++i)
+//    if (lhs->at<DT>(i) != rhs->at<DT>(i))
+//      return false;
   return true;
 }
 

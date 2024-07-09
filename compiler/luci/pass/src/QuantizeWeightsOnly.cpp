@@ -16,6 +16,7 @@
 
 #include "QuantizeWeightsOnly.h"
 #include "QuantizationUtils.h"
+#include "OMHuffmanTranscoder.h"
 
 #include <luci/Service/Nodes/CircleConst.h>
 #include <luci/Log.h>
@@ -24,7 +25,7 @@
 #include <vector>
 #include <functional>
 #include <limits>
-
+#include <iostream>
 using namespace luci;
 
 namespace
@@ -60,7 +61,7 @@ void iterate_per_channel(CircleConst *node, int32_t &channel_dim_index, IterFunc
     }
   }
 }
-
+//#include <iostream>
 // TODO Reduce duplicate code with QuantizeDequantizeWeights
 template <loco::DataType out_type>
 void sym_wquant_per_channel(CircleConst *node, std::vector<float> &min, std::vector<float> &max,
@@ -68,37 +69,26 @@ void sym_wquant_per_channel(CircleConst *node, std::vector<float> &min, std::vec
                             std::vector<float> &nudged_max, int32_t &channel_dim_index)
 {
   assert(node->dtype() == loco::DataType::FLOAT32);
-  assert(out_type == loco::DataType::S4 || out_type == loco::DataType::S8 ||
+  assert(out_type == loco::DataType::S4 || out_type == loco::DataType::U8 ||
          out_type == loco::DataType::S16);
 
   const int32_t kMaxScale = max_for_sym_quant(out_type);
   const int32_t kMinScale = -kMaxScale;
 
-  uint32_t size = node->size<loco::DataType::FLOAT32>();
-  std::vector<int32_t> quantized_values(size);
+  uint32_t size = node->size<loco::DataType::U8>();
+  std::cout << size << " SIZE\n";
 
-  for (size_t i = 0; i < min.size(); ++i)
-  {
-    compute_sym_scale(min[i], max[i], scaling_factor[i], nudged_min[i], nudged_max[i], out_type);
-  }
 
-  auto quantize = [&](uint32_t *indices, loco::TensorShape &dimension, int channel_dim_index) {
-    int channel_idx = indices[channel_dim_index];
-    const float scaling_factor_inv = 1.0 / scaling_factor[channel_idx];
-    auto data = node->at<loco::DataType::FLOAT32>(cal_offset(dimension, indices));
-    data = data < nudged_min[channel_idx] ? nudged_min[channel_idx] : data;
-    data = data > nudged_max[channel_idx] ? nudged_max[channel_idx] : data;
-    quantized_values[cal_offset(dimension, indices)] =
-      static_cast<int32_t>(std::round(data * scaling_factor_inv));
-  };
+//  node->dtype(out_type);      // change the type of tensor
 
-  iterate_per_channel(node, channel_dim_index, quantize);
+//  node->size<out_type>(size); // resize tensor
+  std::cout <<"--------------------------------- HEREEEEEEEEEEEEEEE\n";
+  std::vector<uint8_t> input;
 
-  node->dtype(out_type);      // change the type of tensor
-  node->size<out_type>(size); // resize tensor
   for (uint32_t i = 0; i < size; ++i)
   {
-    node->at<out_type>(i) = std::min(kMaxScale, std::max(kMinScale, quantized_values[i]));
+    input.push_back(node->at<out_type>(i));
+    node->at<out_type>(i) = 0;
   }
 }
 
@@ -145,53 +135,86 @@ namespace luci
 void QuantizeWeightsOnly::quantize_weights(luci::CircleConst *weights)
 {
   // Find min/max per channel-wise
+//  std::cout <<"--------------------------------- HEREEEEEEEEEEEEEEE\n";
+
   if (granularity == QuantizationGranularity::ChannelWise)
   {
-    auto quantparam = weights->quantparam();
-    if (quantparam == nullptr)
+    uint32_t size = weights->size<loco::DataType::U8>();
+//    std::cout <<"--------------------------------- HEREEEEEEEEEEEEEEE\n";
+    onert_micro::core::HuffmanTranscoder<uint8_t> transcoder;
+    std::vector<uint8_t> input;
+
+    for (uint32_t i = 0; i < size; ++i)
     {
+      input.push_back(weights->at<loco::DataType::U8>(i));
+    }
+    std::vector<uint8_t> encoded = transcoder.encodeInputArray(input);
+    auto decoded = transcoder.decodeEncodedArray(encoded);
+    if(decoded == input)
+      std::cout << "EQUAL\n";
+    else
+    {
+      std::cout << "NOT EQUAL!!!!!!!!!!!!!!\n";
+      std::cout << decoded.size() << " decoded.size()\n";
+      std::cout << input.size() << " input.size()\n";
+
+    }
+    weights->size<loco::DataType::U8>(decoded.size());
+    for (uint32_t i = 0; i < size; ++i)
+    {
+      weights->at<loco::DataType::U8>(i) = decoded[i];
+    }
+    static size_t input_size_sum = 0, encoded_size_sum = 0;
+    input_size_sum += input.size();
+    encoded_size_sum += encoded.size();
+    std::cout  << (int)((100 - (float)encoded_size_sum / input_size_sum * 100) + 0.5) << "% compression\n";
+
+//    auto quantparam = weights->quantparam();
+//    if (quantparam == nullptr)
+//    {
       // Find min/max on the fly
       // NOTE This is for the case when QuantizeDequantizeWeights is skipped
       // TODO Reduce duplicate codes
-      std::vector<float> min;
-      std::vector<float> max;
-      int32_t channel_dim_index = 0;
+//      std::vector<float> min;
+//      std::vector<float> max;
+//      int32_t channel_dim_index = 0;
+//
+//      cal_minmax_per_channel(weights, min, max, channel_dim_index);
+//
+//      std::vector<float> nudged_min(min.size());
+//      std::vector<float> nudged_max(min.size());
+//      std::vector<float> scaling_factor(min.size());
+//      std::vector<int64_t> zp(min.size());
+//
+//      if (output_type == loco::DataType::S4)
+//      {
+//        sym_wquant_per_channel<loco::DataType::S4>(weights, min, max, scaling_factor, nudged_min,
+//                                                   nudged_max, channel_dim_index);
+//      }
+//      else if (output_type == loco::DataType::U8)
+//      {
+//        std::cout <<"--------------------------------- HEREEEEEEEEEEEEEEE\n";
+//        sym_wquant_per_channel<loco::DataType::U8>(weights, min, max, scaling_factor, nudged_min,
+//                                                   nudged_max, channel_dim_index);
+//      }
+//      else if (output_type == loco::DataType::S16)
+//      {
+//        sym_wquant_per_channel<loco::DataType::S16>(weights, min, max, scaling_factor, nudged_min,
+//                                                    nudged_max, channel_dim_index);
+//      }
+//      else
+//      {
+//        throw std::runtime_error("Weights-only quantization supports s8 and s16");
+//      }
 
-      cal_minmax_per_channel(weights, min, max, channel_dim_index);
+//      auto quantparam = std::make_unique<CircleQuantParam>();
+//      quantparam->scale = scaling_factor;
+//      quantparam->zerop = zp;
+//      quantparam->quantized_dimension = channel_dim_index;
+//      weights->quantparam(std::move(quantparam));
 
-      std::vector<float> nudged_min(min.size());
-      std::vector<float> nudged_max(min.size());
-      std::vector<float> scaling_factor(min.size());
-      std::vector<int64_t> zp(min.size());
-
-      if (output_type == loco::DataType::S4)
-      {
-        sym_wquant_per_channel<loco::DataType::S4>(weights, min, max, scaling_factor, nudged_min,
-                                                   nudged_max, channel_dim_index);
-      }
-      else if (output_type == loco::DataType::S8)
-      {
-        sym_wquant_per_channel<loco::DataType::S8>(weights, min, max, scaling_factor, nudged_min,
-                                                   nudged_max, channel_dim_index);
-      }
-      else if (output_type == loco::DataType::S16)
-      {
-        sym_wquant_per_channel<loco::DataType::S16>(weights, min, max, scaling_factor, nudged_min,
-                                                    nudged_max, channel_dim_index);
-      }
-      else
-      {
-        throw std::runtime_error("Weights-only quantization supports s8 and s16");
-      }
-
-      auto quantparam = std::make_unique<CircleQuantParam>();
-      quantparam->scale = scaling_factor;
-      quantparam->zerop = zp;
-      quantparam->quantized_dimension = channel_dim_index;
-      weights->quantparam(std::move(quantparam));
-
-      return;
-    }
+//      return;
+//    }
   }
   else
     throw std::runtime_error("Weights-only quantization does not support layer-wise");
@@ -201,14 +224,15 @@ void QuantizeWeightsOnly::visit(luci::CircleConv2D *node)
 {
   LOGGER(l);
   INFO(l) << "QuantizeWeightsOnly visits node: " << node->name() << std::endl;
+//  std::cout <<"--------------------------------- HEREEEEEEEEEEEEEEE\n";
 
   auto weights = loco::must_cast<luci::CircleConst *>(node->filter());
-  if (!is_quantized(weights))
-  {
+//  if (!is_quantized(weights))
+//  {
     auto new_weights = luci::clone(weights);
     node->filter(new_weights);
     quantize_weights(new_weights);
-  }
+//  }
 }
 
 void QuantizeWeightsOnly::visit(luci::CircleFullyConnected *node)
@@ -217,12 +241,12 @@ void QuantizeWeightsOnly::visit(luci::CircleFullyConnected *node)
   INFO(l) << "QuantizeWeightsOnly visit node: " << node->name() << std::endl;
 
   auto weights = loco::must_cast<luci::CircleConst *>(node->weights());
-  if (!is_quantized(weights))
-  {
+//  if (!is_quantized(weights))
+//  {
     auto new_weights = luci::clone(weights);
     node->weights(new_weights);
     quantize_weights(new_weights);
-  }
+//  }
 }
 
 void QuantizeWeightsOnly::visit(luci::CircleDepthwiseConv2D *node)
@@ -231,12 +255,12 @@ void QuantizeWeightsOnly::visit(luci::CircleDepthwiseConv2D *node)
   INFO(l) << "QuantizeWeightsOnly visits node: " << node->name() << std::endl;
 
   auto weights = loco::must_cast<luci::CircleConst *>(node->filter());
-  if (!is_quantized(weights))
-  {
+//  if (!is_quantized(weights))
+//  {
     auto new_weights = luci::clone(weights);
     node->filter(new_weights);
     quantize_weights(new_weights);
-  }
+//  }
 }
 
 void QuantizeWeightsOnly::visit(luci::CircleNode *) {}
