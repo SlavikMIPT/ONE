@@ -559,6 +559,8 @@ bool has_same_values(luci::CircleConst *lhs, luci::CircleConst *rhs)
       return has_same_elements<loco::DataType::S4>(lhs, rhs);
 
     case loco::DataType::S8:
+      if (lhs->size<loco::DataType::S8>() != rhs->size<loco::DataType::S8>())
+        return false;
       return has_same_elements<loco::DataType::S8>(lhs, rhs);
 
     case loco::DataType::S16:
@@ -574,6 +576,8 @@ bool has_same_values(luci::CircleConst *lhs, luci::CircleConst *rhs)
       return has_same_elements<loco::DataType::U4>(lhs, rhs);
 
     case loco::DataType::U8:
+      if (lhs->size<loco::DataType::U8>() != rhs->size<loco::DataType::U8>())
+        return false;
       return has_same_elements<loco::DataType::U8>(lhs, rhs);
 
     case loco::DataType::BOOL:
@@ -643,8 +647,14 @@ void exportOpDefinedTensor(const CircleTensorInfo &info, FlatBufferBuilder &buil
 
   auto is_variable = info.is_variable();
 
-  auto tensor_offset = CreateTensor(builder, shape_offset, info.dtype(), buffer_id, name_offset,
-                                    quantparam, is_variable, sparsityparam, shape_signature_offset);
+  luci::CircleConst *content = info.content();
+  auto compression_type = circle::CompressionType_NONE;
+  if (content)
+    compression_type = to_circle_compressiontype(info.content()->compression());
+
+  auto tensor_offset =
+    CreateTensor(builder, shape_offset, info.dtype(), buffer_id, name_offset, quantparam,
+                 is_variable, sparsityparam, shape_signature_offset, false, 0, compression_type);
   gd._tensors.push_back(tensor_offset);
 }
 

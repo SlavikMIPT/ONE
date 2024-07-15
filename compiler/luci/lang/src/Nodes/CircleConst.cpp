@@ -20,6 +20,9 @@
 
 namespace luci
 {
+CompressionType CircleConst::compression(void) const { return _compression; }
+
+void CircleConst::compression(luci::CompressionType c) { _compression = c; }
 
 template <loco::DataType DT> uint32_t CircleConst::size(void) const
 {
