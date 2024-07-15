@@ -117,9 +117,10 @@ void Conv2D::configure()
   params.dilation_height_factor = _params.dilation_height_factor;
   params.dilation_width_factor = _params.dilation_width_factor;
   auto scratchpad = getOutputTensors()[1];
+  bool is_compressed = filter()->get_compression() != luci::CompressionType::NONE;
   luci_interpreter_pal::SetupScratchpadTensor(scratchpad, input()->element_type(), params,
                                               getTensorShape(input()), getTensorShape(filter()),
-                                              getTensorShape(output()));
+                                              getTensorShape(output()), is_compressed);
 
   switch (_params.activation)
   {
@@ -350,8 +351,8 @@ void Conv2D::evalQuantizedU8PerChannelHuffman() const
   params.dilation_height_factor = _params.dilation_height_factor;
   params.dilation_width_factor = _params.dilation_width_factor;
   // The kernel expects filter zero points to be negated.
-  params.input_offset = -input()->zero_point(); // Note the '-'.
-  params.weights_offset = 0;                    // Unused in tflite code
+  params.input_offset = -input()->zero_point();    // Note the '-'.
+  params.weights_offset = -filter()->zero_point(); // Unused in tflite code
   params.output_offset = output()->zero_point();
   params.quantized_activation_min = activation_min;
   params.quantized_activation_max = activation_max;
@@ -385,7 +386,6 @@ void Conv2D::evalQuantizedU8PerChannelHuffman() const
     scratchpad->resize(scratchpad_shape);
     scratchpad_data = scratchpad->data<uint8_t>();
   }
-
   luci_interpreter_pal::ConvPerChannelHuffman<uint8_t>(
     params, multipliers.data(), shifts.data(), getTensorShape(input()),
     getTensorData<uint8_t>(input()), getTensorShape(filter()), getTensorData<uint8_t>(filter()),

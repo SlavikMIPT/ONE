@@ -85,19 +85,6 @@ static inline void Conv(const tflite::ConvParams &params, const tflite::RuntimeS
                               scratchpad_data, gemmlowp_context.get());
 }
 
-// template <typename T>
-// void ConvPerChannelHuffman(const tflite::ConvParams &params, const int32_t *mult,
-//                            const int32_t *shifts, const tflite::RuntimeShape &input_shape,
-//                            const T *input_data, const tflite::RuntimeShape &filter_shape,
-//                            const T *filter_data, const tflite::RuntimeShape &bias_shape,
-//                            const int32 *bias_data, const tflite::RuntimeShape &output_shape,
-//                            T *output_data, const tflite::RuntimeShape &scratchpad_shape,
-//                            T *scratchpad_data)
-//{
-//   throw std::runtime_error("Unsupported type.");
-// }
-//
-// template <>
 template <typename T>
 void ConvPerChannelHuffman(const tflite::ConvParams &params, const int32_t *mult,
                            const int32_t *shifts, const tflite::RuntimeShape &input_shape,
@@ -118,6 +105,7 @@ void ConvPerChannelHuffman(const tflite::ConvParams &params, const int32_t *mult
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
   const int32_t output_offset = params.output_offset;
+  const int32_t filter_offset = params.weights_offset;
 
   // Set min and max value of the output.
   const int32_t output_activation_min = params.quantized_activation_min;
@@ -154,7 +142,6 @@ void ConvPerChannelHuffman(const tflite::ConvParams &params, const int32_t *mult
   for (int out_channel = 0; out_channel < output_depth; ++out_channel)
   {
     auto group = out_channel / filters_per_group;
-    int32_t acc = 0;
 
     // extract compressed filter
     transcoder.decode_n(reinterpret_cast<uint8_t *>(&scratchpad_data[0]),
@@ -168,6 +155,8 @@ void ConvPerChannelHuffman(const tflite::ConvParams &params, const int32_t *mult
         for (int out_x = 0; out_x < output_width; ++out_x)
         {
           const int in_x_origin = (out_x * stride_width) - pad_width;
+          int32_t acc = 0;
+
           for (int in_channel = 0; in_channel < filter_input_depth; ++in_channel)
           {
             for (int filter_y = 0; filter_y < filter_height; ++filter_y)
@@ -206,7 +195,7 @@ void ConvPerChannelHuffman(const tflite::ConvParams &params, const int32_t *mult
                 // does not exceed 2^16, which is the case in all the models
                 // we have seen so far.
                 // accumulator depth is smaller than 2^16.
-                acc += filter_val * (input_val + input_offset);
+                acc += (filter_val + filter_offset) * (input_val + input_offset);
               }
             }
           }
@@ -247,7 +236,8 @@ static inline void SetupScratchpadTensor(luci_interpreter::Tensor *scratchpad,
                                          const tflite::ConvParams &params,
                                          const tflite::RuntimeShape &input_shape,
                                          const tflite::RuntimeShape &filter_shape,
-                                         const tflite::RuntimeShape &output_shape)
+                                         const tflite::RuntimeShape &output_shape,
+                                         bool is_compressed = false)
 {
   const int32_t filter_height = filter_shape.Dims(1);
   const int32_t filter_width = filter_shape.Dims(2);
@@ -259,7 +249,7 @@ static inline void SetupScratchpadTensor(luci_interpreter::Tensor *scratchpad,
   const bool need_non_dilated_scratchpad = params.stride_height != 1 || params.stride_width != 1 ||
                                            filter_height != 1 || filter_width != 1;
   auto _need_scratchpad = input_data_type != luci_interpreter::DataType::S16 &&
-                          (need_dilated_scratchpad || need_non_dilated_scratchpad);
+                          (need_dilated_scratchpad || need_non_dilated_scratchpad || is_compressed);
 
   if (_need_scratchpad)
   {

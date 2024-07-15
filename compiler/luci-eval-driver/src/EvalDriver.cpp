@@ -23,6 +23,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <random>
 
 namespace
 {
@@ -65,18 +66,18 @@ template <typename NodeT> size_t getTensorSize(const NodeT *node)
  */
 int entry(int argc, char **argv)
 {
-  if (argc != 5)
-  {
-    std::cerr
-      << "Usage: " << argv[0]
-      << " <path/to/circle/model> <num_inputs> <path/to/input/prefix> <path/to/output/file>\n";
-    return EXIT_FAILURE;
-  }
+  //  if (argc != 5)
+  //  {
+  //    std::cerr
+  //      << "Usage: " << argv[0]
+  //      << " <path/to/circle/model> <num_inputs> <path/to/input/prefix> <path/to/output/file>\n";
+  //    return EXIT_FAILURE;
+  //  }
 
   const char *filename = argv[1];
   const int32_t num_inputs = atoi(argv[2]);
-  const char *input_prefix = argv[3];
-  const char *output_file = argv[4];
+  //  const char *input_prefix = argv[3];
+  //  const char *output_file = argv[4];
 
   // Load model from the file
   luci::ImporterEx importer;
@@ -100,12 +101,26 @@ int entry(int argc, char **argv)
     std::cerr << "ERROR: invalid num_inputs value; should be " << input_nodes.size() << std::endl;
     return EXIT_FAILURE;
   }
+  std::random_device dev;
+  std::mt19937 rng(dev());
+  std::uniform_int_distribution<std::mt19937::result_type> dist6(
+    0, 127); // distribution in range [1, 6]
+
+  //  std::cout << dist6(rng) << std::endl;
   for (int32_t i = 0; i < num_inputs; i++)
   {
     const auto *input_node = loco::must_cast<const luci::CircleInput *>(input_nodes[i]);
-    std::vector<char> input_data(getTensorSize(input_node));
-    readDataFromFile(std::string(input_prefix) + std::to_string(i), input_data.data(),
-                     input_data.size());
+    std::vector<char> input_data{79, 114, 24, 12, 5,   101, 105, 4,  67,
+                                 73, 81,  30, 92, 105, 117, 55,  73, 70};
+    //    std::vector<char> input_data(getTensorSize(input_node));
+    for (auto &it : input_data)
+    {
+      //      it = dist6(rng);
+      std::cout << static_cast<int>(it) << ", ";
+    }
+    std::cout << "\n";
+    //    readDataFromFile(std::string(input_prefix) + std::to_string(i), input_data.data(),
+    //                     input_data.size());
     interpreter.writeInputTensor(input_node, input_data.data(), input_data.size());
   }
 
@@ -119,18 +134,23 @@ int entry(int argc, char **argv)
     const auto *output_node = loco::must_cast<const luci::CircleOutput *>(output_nodes[i]);
     std::vector<char> output_data(getTensorSize(output_node));
     interpreter.readOutputTensor(output_node, output_data.data(), output_data.size());
+    for (auto &it : output_data)
+    {
+      std::cout << static_cast<int>(it) << ", ";
+    }
+    std::cout << "\n";
 
     // Output data is written in ${output_file}
     // (ex: Add.circle.output0)
     // Output shape is written in ${output_file}.shape
     // (ex: Add.circle.output0.shape)
-    writeDataToFile(std::string(output_file) + std::to_string(i), output_data.data(),
-                    output_data.size());
+    //    writeDataToFile(std::string(output_file) + std::to_string(i), output_data.data(),
+    //                    output_data.size());
     // In case of Tensor output is Scalar value.
     // The output tensor with rank 0 is treated as a scalar with shape (1)
     if (output_node->rank() == 0)
     {
-      writeDataToFile(std::string(output_file) + std::to_string(i) + ".shape", "1", 1);
+      //      writeDataToFile(std::string(output_file) + std::to_string(i) + ".shape", "1", 1);
     }
     else
     {
@@ -140,8 +160,9 @@ int entry(int argc, char **argv)
         shape_str += ",";
         shape_str += std::to_string(output_node->dim(j).value());
       }
-      writeDataToFile(std::string(output_file) + std::to_string(i) + ".shape", shape_str.c_str(),
-                      shape_str.size());
+      //      writeDataToFile(std::string(output_file) + std::to_string(i) + ".shape",
+      //      shape_str.c_str(),
+      //                      shape_str.size());
     }
   }
   return EXIT_SUCCESS;
