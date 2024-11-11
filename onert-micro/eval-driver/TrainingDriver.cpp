@@ -35,6 +35,11 @@ using DataBuffer = std::vector<char>;
 void readDataFromFile(const std::string &filename, char *data, size_t data_size,
                       size_t start_position = 0)
 {
+  for(auto i = 0; i < data_size; ++i)
+  {
+    data[i] = 0;
+  }
+  return;
   std::streampos start = start_position;
 
   std::ifstream fs(filename, std::ifstream::binary);
@@ -182,7 +187,7 @@ int entry(int argc, char **argv)
   const uint32_t training_epochs = 50;
   const float lambda = 0.001f;
   const uint32_t BATCH_SIZE = 64;
-  const uint32_t num_train_layers = 4;
+  const uint32_t num_train_layers = 3;
   const onert_micro::OMLoss loss = onert_micro::CROSS_ENTROPY;
   const onert_micro::OMTrainOptimizer train_optim = onert_micro::ADAM;
   const float beta = 0.9;
@@ -213,11 +218,11 @@ int entry(int argc, char **argv)
   const uint32_t INPUT_SIZE = train_interpreter.getInputSizeAt(0);
 
   // Temporary buffer to read input data from file using BATCH_SIZE
-  float training_input[BATCH_SIZE * INPUT_SIZE];
-  float training_target[BATCH_SIZE * OUTPUT_SIZE];
+  std::vector<float> training_input(BATCH_SIZE * INPUT_SIZE);
+  std::vector<float> training_target(BATCH_SIZE * OUTPUT_SIZE);
   // Note: here test size used with BATCH_SIZE = 1
-  float test_input[INPUT_SIZE];
-  float test_target[OUTPUT_SIZE];
+  std::vector<float> test_input(INPUT_SIZE);
+  std::vector<float> test_target(OUTPUT_SIZE);
 
   std::vector<float> accuracy_v;
   std::vector<float> cross_entropy_v;
@@ -241,17 +246,17 @@ int entry(int argc, char **argv)
       config.training_context.batch_size = cur_batch_size;
 
       // Read current input and target data
-      readDataFromFile(input_input_train_data_path, reinterpret_cast<char *>(training_input),
+      readDataFromFile(input_input_train_data_path, reinterpret_cast<char *>(training_input.data()),
                        sizeof(float) * INPUT_SIZE * cur_batch_size,
                        i * sizeof(MODEL_TYPE) * INPUT_SIZE * BATCH_SIZE);
 
-      readDataFromFile(input_target_train_data_path, reinterpret_cast<char *>(training_target),
+      readDataFromFile(input_target_train_data_path, reinterpret_cast<char *>(training_target.data()),
                        sizeof(float) * OUTPUT_SIZE * cur_batch_size,
                        i * sizeof(MODEL_TYPE) * OUTPUT_SIZE * BATCH_SIZE);
 
       // Set input and target
-      train_interpreter.setInput(reinterpret_cast<uint8_t *>(training_input), 0);
-      train_interpreter.setTarget(reinterpret_cast<uint8_t *>(training_target), 0);
+      train_interpreter.setInput(reinterpret_cast<uint8_t *>(training_input.data()), 0);
+      train_interpreter.setTarget(reinterpret_cast<uint8_t *>(training_target.data()), 0);
 
       // Train with current batch size
       train_interpreter.trainSingleStep(config);
@@ -317,16 +322,16 @@ int entry(int argc, char **argv)
     for (int i = 0; i < num_steps; ++i)
     {
       uint32_t cur_batch_size = 1;
-      readDataFromFile(input_input_test_data_path, reinterpret_cast<char *>(test_input),
+      readDataFromFile(input_input_test_data_path, reinterpret_cast<char *>(test_input.data()),
                        sizeof(float) * INPUT_SIZE * cur_batch_size,
                        i * sizeof(MODEL_TYPE) * INPUT_SIZE);
 
-      readDataFromFile(input_target_test_data_path, reinterpret_cast<char *>(test_target),
+      readDataFromFile(input_target_test_data_path, reinterpret_cast<char *>(test_target.data()),
                        sizeof(float) * OUTPUT_SIZE * cur_batch_size,
                        i * sizeof(MODEL_TYPE) * OUTPUT_SIZE);
 
-      train_interpreter.setInput(reinterpret_cast<uint8_t *>(test_input), 0);
-      train_interpreter.setTarget(reinterpret_cast<uint8_t *>(test_target), 0);
+      train_interpreter.setInput(reinterpret_cast<uint8_t *>(test_input.data()), 0);
+      train_interpreter.setTarget(reinterpret_cast<uint8_t *>(test_target.data()), 0);
 
       float mse = 0.f;
       float mae = 0.f;
