@@ -60,7 +60,8 @@ template <loco::DataType DT> bool compress_weights_huffman(luci::CircleConv2D *c
   }
 
   std::vector<uint8_t> encoded = encoder.encode(tmp_buf);
-
+  if(encoded.size() >= tmp_buf.size())
+    return false;
   new_weights->dtype(DT);
   new_weights->size<DT>(encoded.size());
   new_weights->compression(luci::CompressionType::HUFFMAN);
