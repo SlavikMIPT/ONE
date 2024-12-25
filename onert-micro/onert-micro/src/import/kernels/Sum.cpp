@@ -14,12 +14,58 @@
  * limitations under the License.
  */
 
-#include "import/helpers/OMConfigureSISOKernel.h"
+#include "import/OMKernelConfigureBuilder.h"
+#include "core/OMUtils.h"
+#include "OMStatus.h"
+#include "execute/OMRuntimeKernel.h"
 
 using namespace onert_micro;
 using namespace onert_micro::core;
 
+namespace
+{
+
+constexpr uint32_t input1TensorIdx = 0;
+constexpr uint32_t input2TensorIdx = 1;
+constexpr uint32_t outputTensorIdx = 0;
+
+} // namespace
+
 OMStatus onert_micro::import::configure_kernel_CircleSum(const OMConfigureArgs &config_args)
 {
-  return onert_micro::import::helpers::configure_SISO_kernel(config_args);
+  OMRuntimeContext &runtime_context = config_args.runtime_context;
+  uint16_t op_index = config_args.kernel_index;
+
+  onert_micro::execute::OMRuntimeKernel runtime_kernel;
+
+  OMStatus status = runtime_kernel.readKernel(op_index, runtime_context);
+  if (status != Ok)
+    return status;
+
+  const circle::Tensor *input1 = runtime_kernel.inputs[input1TensorIdx];
+  const circle::Tensor *input2 = runtime_kernel.inputs[input2TensorIdx];
+  const circle::Tensor *output = runtime_kernel.outputs[outputTensorIdx];
+
+  assert(input1 != nullptr);
+  assert(input2 != nullptr);
+  assert(output != nullptr);
+
+  status = utils::checkCondition(input1->type() == output->type());
+  if (status != Ok)
+    return status;
+
+  status = utils::checkCondition(input2->type() == circle::TensorType_INT32);
+  if (status != Ok)
+    return status;
+
+  // const auto *options =runtime_kernel.first_operator->builtin_options_as_ReducerOptions();
+  // status = utils::checkCondition(options != nullptr);
+  // if (status != Ok)
+  //   return status;
+
+  // status = utils::checkCondition(options->axis() >= 0);
+  // if (status != Ok)
+  //   return status;
+
+  return status;
 }
