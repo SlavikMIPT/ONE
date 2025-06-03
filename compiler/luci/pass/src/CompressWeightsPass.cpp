@@ -93,7 +93,6 @@ template <loco::DataType DT> bool compress_weights_huffman(luci::CircleFullyConn
   auto new_weights = luci::clone(weights);
 
   std::vector<T> tmp_buf(weights->size<DT>());
-
   for (size_t i = 0; i < weights->size<DT>(); ++i)
   {
     tmp_buf[i] = weights->at<DT>(i);
@@ -114,7 +113,48 @@ template <loco::DataType DT> bool compress_weights_huffman(luci::CircleFullyConn
 
   return true;
 }
+template <loco::DataType DT> bool compress_weights_huffman_4(luci::CircleFullyConnected *fc)
+{
+  // NOTE: need to test
+  using T = typename TypeSelector<DT>::Type;
+  assert(fc);
 
+  auto weights = loco::must_cast<luci::CircleConst *>(fc->weights());
+  if (weights->compression() != luci::CompressionType::NONE)
+    return false;
+
+  luci::huffman::HuffmanEncoder<T> encoder;
+  auto new_weights = luci::clone(weights);
+  uint32_t num_elements = weights->size<DT>();
+  uint32_t raw_size = (num_elements + 1) / 2;
+  std::vector<T> tmp_buf(raw_size);
+
+  for (uint32_t i = 0; i < raw_size; ++i)
+  {
+    uint32_t idx = i * 2;
+    tmp_buf[i] = static_cast<T>(weights->at<DT>(idx) << 4);
+    if (idx < num_elements)
+    {
+      idx++;
+      tmp_buf[i] |= static_cast<T>(weights->at<DT>(idx)) >> 4;
+    }
+  }
+
+  std::vector<uint8_t> encoded = encoder.encode(tmp_buf);
+  if (encoded.size() >= tmp_buf.size())
+    return false;
+  new_weights->dtype(DT);
+  new_weights->size<DT>(encoded.size());
+  new_weights->compression(luci::CompressionType::HUFFMAN);
+
+  for (size_t i = 0; i < new_weights->size<DT>(); ++i)
+  {
+    new_weights->at<DT>(i) = encoded[i];
+  }
+  fc->weights(new_weights);
+
+  return true;
+}
 } // namespace
 
 namespace luci
@@ -160,7 +200,7 @@ bool CompressWeightsPass::run(loco::Graph *g)
       }
       else if (weights->dtype() == loco::DataType::U4)
       {
-        if (compress_weights_huffman<loco::DataType::U4>(fc))
+        if (compress_weights_huffman_4<loco::DataType::U4>(fc))
           changed = true;
       }
     }
