@@ -39,6 +39,11 @@ template <> class TypeSelector<loco::DataType::S8>
 public:
   using Type = int8_t;
 };
+template <> class TypeSelector<loco::DataType::U4>
+{
+public:
+  using Type = uint8_t;
+};
 
 template <loco::DataType DT> bool compress_weights_huffman(luci::CircleConv2D *conv2d)
 {
@@ -60,7 +65,7 @@ template <loco::DataType DT> bool compress_weights_huffman(luci::CircleConv2D *c
   }
 
   std::vector<uint8_t> encoded = encoder.encode(tmp_buf);
-  if(encoded.size() >= tmp_buf.size())
+  if (encoded.size() >= tmp_buf.size())
     return false;
   new_weights->dtype(DT);
   new_weights->size<DT>(encoded.size());
@@ -71,6 +76,41 @@ template <loco::DataType DT> bool compress_weights_huffman(luci::CircleConv2D *c
     new_weights->at<DT>(i) = encoded[i];
   }
   conv2d->filter(new_weights);
+
+  return true;
+}
+
+template <loco::DataType DT> bool compress_weights_huffman(luci::CircleFullyConnected *fc)
+{
+  using T = typename TypeSelector<DT>::Type;
+  assert(fc);
+
+  auto weights = loco::must_cast<luci::CircleConst *>(fc->weights());
+  if (weights->compression() != luci::CompressionType::NONE)
+    return false;
+
+  luci::huffman::HuffmanEncoder<T> encoder;
+  auto new_weights = luci::clone(weights);
+
+  std::vector<T> tmp_buf(weights->size<DT>());
+
+  for (size_t i = 0; i < weights->size<DT>(); ++i)
+  {
+    tmp_buf[i] = weights->at<DT>(i);
+  }
+
+  std::vector<uint8_t> encoded = encoder.encode(tmp_buf);
+  if (encoded.size() >= tmp_buf.size())
+    return false;
+  new_weights->dtype(DT);
+  new_weights->size<DT>(encoded.size());
+  new_weights->compression(luci::CompressionType::HUFFMAN);
+
+  for (size_t i = 0; i < new_weights->size<DT>(); ++i)
+  {
+    new_weights->at<DT>(i) = encoded[i];
+  }
+  fc->weights(new_weights);
 
   return true;
 }
@@ -87,20 +127,42 @@ bool CompressWeightsPass::run(loco::Graph *g)
   for (auto node : loco::active_nodes(loco::output_nodes(g)))
   {
     auto conv2d = dynamic_cast<luci::CircleConv2D *>(node);
-    if (not conv2d)
+    auto fc = dynamic_cast<luci::CircleFullyConnected *>(node);
+    if (not(conv2d || fc))
       continue;
-
-    auto filter = loco::must_cast<luci::CircleConst *>(conv2d->filter());
-
-    if (filter->dtype() == loco::DataType::S8)
+    if (conv2d)
     {
-      if (compress_weights_huffman<loco::DataType::S8>(conv2d))
-        changed = true;
+      auto filter = loco::must_cast<luci::CircleConst *>(conv2d->filter());
+
+      if (filter->dtype() == loco::DataType::S8)
+      {
+        if (compress_weights_huffman<loco::DataType::S8>(conv2d))
+          changed = true;
+      }
+      else if (filter->dtype() == loco::DataType::U8)
+      {
+        if (compress_weights_huffman<loco::DataType::U8>(conv2d))
+          changed = true;
+      }
     }
-    else if (filter->dtype() == loco::DataType::U8)
+    else if (fc)
     {
-      if (compress_weights_huffman<loco::DataType::U8>(conv2d))
-        changed = true;
+      auto weights = loco::must_cast<luci::CircleConst *>(fc->weights());
+      if (weights->dtype() == loco::DataType::S8)
+      {
+        if (compress_weights_huffman<loco::DataType::S8>(fc))
+          changed = true;
+      }
+      else if (weights->dtype() == loco::DataType::U8)
+      {
+        if (compress_weights_huffman<loco::DataType::U8>(fc))
+          changed = true;
+      }
+      else if (weights->dtype() == loco::DataType::U4)
+      {
+        if (compress_weights_huffman<loco::DataType::U4>(fc))
+          changed = true;
+      }
     }
   }
 
